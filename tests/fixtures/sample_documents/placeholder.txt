@@ -1,0 +1,1 @@
+Sample fixture document for smoke testing.

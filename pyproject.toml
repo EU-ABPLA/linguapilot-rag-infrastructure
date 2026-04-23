@@ -6,9 +6,19 @@ build-backend = "setuptools.build_meta"
 name = "linguapilot-rag-infrastructure"
 version = "0.1.0"
 requires-python = ">=3.10"
+dependencies = ["PyYAML>=6.0"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "unit: unit tests",
+  "integration: integration tests",
+  "e2e: end-to-end tests"
+]
+addopts = "-q"

@@ -1,16 +1,24 @@
 llm:
   provider: openai
   model: gpt-4o-mini
+  api_key: ""
 embedding:
   provider: openai
   model: text-embedding-3-small
+  dimensions: 1536
 vector_store:
   provider: chroma
+  collection: default
 retrieval:
   top_k: 5
+  use_hybrid: true
 rerank:
   enabled: false
+  provider: none
+  model: ""
 evaluation:
   backends: [custom]
+  golden_test_set: tests/fixtures/golden_test_set.json
 observability:
   enabled: true
+  log_file: logs/traces.jsonl

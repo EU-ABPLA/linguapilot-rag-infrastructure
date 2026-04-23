@@ -1,0 +1,16 @@
+llm:
+  provider: openai
+  model: gpt-4o-mini
+embedding:
+  provider: openai
+  model: text-embedding-3-small
+vector_store:
+  provider: chroma
+retrieval:
+  top_k: 5
+rerank:
+  enabled: false
+evaluation:
+  backends: [custom]
+observability:
+  enabled: true

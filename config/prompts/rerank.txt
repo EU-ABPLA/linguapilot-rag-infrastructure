@@ -1,0 +1,1 @@
+Rank candidates by relevance to the query.

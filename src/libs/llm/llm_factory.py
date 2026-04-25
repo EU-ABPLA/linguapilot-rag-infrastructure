@@ -1,6 +1,9 @@
 from typing import Any, Callable, Dict, Mapping
 
+from libs.llm.azure_llm import AzureLLM
 from libs.llm.base_llm import BaseLLM, UnavailableLLM
+from libs.llm.deepseek_llm import DeepSeekLLM
+from libs.llm.openai_llm import OpenAILLM
 
 LLMBuilder = Callable[[], BaseLLM]
 
@@ -63,5 +66,7 @@ def _provider_from_object(settings: Any) -> Any:
     raise ValueError("Missing required field: llm.provider")
 
 
-for _provider in ("openai", "azure", "deepseek", "ollama"):
-    LLMFactory.register(_provider, lambda provider=_provider: UnavailableLLM(provider))
+LLMFactory.register("openai", OpenAILLM)
+LLMFactory.register("azure", AzureLLM)
+LLMFactory.register("deepseek", DeepSeekLLM)
+LLMFactory.register("ollama", lambda: UnavailableLLM("ollama"))

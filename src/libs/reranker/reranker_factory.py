@@ -1,6 +1,8 @@
 from typing import Any, Callable, Dict, Mapping
 
-from libs.reranker.base_reranker import BaseReranker, NoneReranker, UnavailableReranker
+from libs.reranker.base_reranker import BaseReranker, NoneReranker
+from libs.reranker.cross_encoder_reranker import CrossEncoderReranker
+from libs.reranker.llm_reranker import LLMReranker
 
 RerankerBuilder = Callable[[], BaseReranker]
 
@@ -74,8 +76,5 @@ def _backend_from_object(settings: Any) -> Any:
 
 
 RerankerFactory.register("none", NoneReranker)
-
-for _backend in ("llm", "cross_encoder"):
-	RerankerFactory.register(
-		_backend, lambda backend=_backend: UnavailableReranker(backend)
-	)
+RerankerFactory.register("llm", LLMReranker)
+RerankerFactory.register("cross_encoder", CrossEncoderReranker)

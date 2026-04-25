@@ -1,6 +1,7 @@
 from typing import Any, Callable, Dict, Mapping
 
-from libs.vector_store.base_vector_store import BaseVectorStore, UnavailableVectorStore
+from libs.vector_store.base_vector_store import BaseVectorStore
+from libs.vector_store.chroma_store import ChromaStore
 
 VectorStoreBuilder = Callable[[], BaseVectorStore]
 
@@ -65,7 +66,4 @@ def _provider_from_object(settings: Any) -> Any:
 	raise ValueError("Missing required field: vector_store.provider")
 
 
-for _provider in ("chroma",):
-	VectorStoreFactory.register(
-		_provider, lambda provider=_provider: UnavailableVectorStore(provider)
-	)
+VectorStoreFactory.register("chroma", ChromaStore)

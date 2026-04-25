@@ -1,8 +1,9 @@
 from typing import Any, Callable, Dict, Mapping
 
 from libs.llm.azure_llm import AzureLLM
-from libs.llm.base_llm import BaseLLM, UnavailableLLM
+from libs.llm.base_llm import BaseLLM
 from libs.llm.deepseek_llm import DeepSeekLLM
+from libs.llm.ollama_llm import OllamaLLM
 from libs.llm.openai_llm import OpenAILLM
 
 LLMBuilder = Callable[[], BaseLLM]
@@ -69,4 +70,4 @@ def _provider_from_object(settings: Any) -> Any:
 LLMFactory.register("openai", OpenAILLM)
 LLMFactory.register("azure", AzureLLM)
 LLMFactory.register("deepseek", DeepSeekLLM)
-LLMFactory.register("ollama", lambda: UnavailableLLM("ollama"))
+LLMFactory.register("ollama", OllamaLLM)

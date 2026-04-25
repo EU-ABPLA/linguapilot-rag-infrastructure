@@ -1,6 +1,8 @@
 from typing import Any, Callable, Dict, Mapping
 
 from libs.embedding.base_embedding import BaseEmbedding, UnavailableEmbedding
+from libs.embedding.azure_embedding import AzureEmbedding
+from libs.embedding.openai_embedding import OpenAIEmbedding
 
 EmbeddingBuilder = Callable[[], BaseEmbedding]
 
@@ -63,7 +65,6 @@ def _provider_from_object(settings: Any) -> Any:
 	raise ValueError("Missing required field: embedding.provider")
 
 
-for _provider in ("openai", "azure", "ollama"):
-	EmbeddingFactory.register(
-		_provider, lambda provider=_provider: UnavailableEmbedding(provider)
-	)
+EmbeddingFactory.register("openai", OpenAIEmbedding)
+EmbeddingFactory.register("azure", AzureEmbedding)
+EmbeddingFactory.register("ollama", lambda: UnavailableEmbedding("ollama"))

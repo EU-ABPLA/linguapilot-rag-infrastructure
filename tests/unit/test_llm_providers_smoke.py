@@ -6,6 +6,7 @@ import pytest
 from libs.llm.azure_llm import AzureLLM
 from libs.llm.deepseek_llm import DeepSeekLLM
 from libs.llm.llm_factory import LLMFactory
+from libs.llm.ollama_llm import OllamaLLM
 from libs.llm.openai_llm import OpenAILLM
 
 
@@ -32,6 +33,11 @@ def test_factory_routes_azure_provider() -> None:
 def test_factory_routes_deepseek_provider() -> None:
     instance = LLMFactory.create(Settings(llm=LLMConfig(provider="deepseek")))
     assert isinstance(instance, DeepSeekLLM)
+
+
+def test_factory_routes_ollama_provider() -> None:
+    instance = LLMFactory.create(Settings(llm=LLMConfig(provider="ollama")))
+    assert isinstance(instance, OllamaLLM)
 
 
 def test_openai_chat_validation_error_contains_provider() -> None:
@@ -89,3 +95,31 @@ def test_deepseek_chat_request_error_contains_provider() -> None:
     with pytest.raises(RuntimeError) as exc_info:
         llm.chat([{"role": "user", "content": "ping"}])
     assert "deepseek request error" in str(exc_info.value)
+
+
+def test_ollama_chat_success_with_mock_request() -> None:
+    called: Dict[str, Any] = {}
+
+    def mock_request(url: str, headers: Dict[str, str], payload: Dict[str, Any], timeout: float) -> Dict[str, Any]:
+        called["url"] = url
+        called["headers"] = headers
+        called["payload"] = payload
+        called["timeout"] = timeout
+        return {"message": {"content": "ok-ollama"}}
+
+    llm = OllamaLLM(model="llama3.1:8b", base_url="http://localhost:11434", request_fn=mock_request)
+    result = llm.chat([{"role": "user", "content": "ping"}])
+    assert result == "ok-ollama"
+    assert called["url"].endswith("/api/chat")
+    assert called["payload"]["model"] == "llama3.1:8b"
+    assert called["payload"]["stream"] is False
+
+
+def test_ollama_chat_request_error_contains_provider() -> None:
+    def mock_request(url: str, headers: Dict[str, str], payload: Dict[str, Any], timeout: float) -> Dict[str, Any]:
+        raise RuntimeError("service down")
+
+    llm = OllamaLLM(model="m", request_fn=mock_request)
+    with pytest.raises(RuntimeError) as exc_info:
+        llm.chat([{"role": "user", "content": "ping"}])
+    assert "ollama request error" in str(exc_info.value)

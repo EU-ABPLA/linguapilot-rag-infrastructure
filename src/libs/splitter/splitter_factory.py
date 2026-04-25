@@ -1,6 +1,7 @@
 from typing import Any, Callable, Dict, Mapping
 
 from libs.splitter.base_splitter import BaseSplitter, UnavailableSplitter
+from libs.splitter.recursive_splitter import RecursiveSplitter
 
 SplitterBuilder = Callable[[], BaseSplitter]
 
@@ -65,7 +66,8 @@ def _provider_from_object(settings: Any) -> Any:
 	raise ValueError("Missing required field: splitter.provider")
 
 
-for _provider in ("recursive", "semantic", "fixed_length"):
+SplitterFactory.register("recursive", RecursiveSplitter)
+for _provider in ("semantic", "fixed_length"):
 	SplitterFactory.register(
 		_provider, lambda provider=_provider: UnavailableSplitter(provider)
 	)

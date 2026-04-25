@@ -1,7 +1,8 @@
 from typing import Any, Callable, Dict, Mapping
 
-from libs.embedding.base_embedding import BaseEmbedding, UnavailableEmbedding
 from libs.embedding.azure_embedding import AzureEmbedding
+from libs.embedding.base_embedding import BaseEmbedding
+from libs.embedding.ollama_embedding import OllamaEmbedding
 from libs.embedding.openai_embedding import OpenAIEmbedding
 
 EmbeddingBuilder = Callable[[], BaseEmbedding]
@@ -67,4 +68,4 @@ def _provider_from_object(settings: Any) -> Any:
 
 EmbeddingFactory.register("openai", OpenAIEmbedding)
 EmbeddingFactory.register("azure", AzureEmbedding)
-EmbeddingFactory.register("ollama", lambda: UnavailableEmbedding("ollama"))
+EmbeddingFactory.register("ollama", OllamaEmbedding)

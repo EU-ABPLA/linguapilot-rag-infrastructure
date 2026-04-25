@@ -1,0 +1,138 @@
+from dataclasses import dataclass
+from typing import Any, Dict, List, Mapping, Optional, Sequence
+
+import pytest
+
+from libs.vector_store.base_vector_store import BaseVectorStore
+from libs.vector_store.vector_store_factory import VectorStoreFactory
+
+
+@dataclass
+class VectorStoreConfig:
+    provider: str
+
+
+@dataclass
+class Settings:
+    vector_store: VectorStoreConfig
+
+
+class FakeVectorStore(BaseVectorStore):
+    def __init__(self) -> None:
+        self._records: List[Dict[str, Any]] = []
+
+    def upsert(
+        self, records: Sequence[Mapping[str, Any]], trace: Optional[Any] = None
+    ) -> None:
+        normalized: List[Dict[str, Any]] = []
+        for record in records:
+            normalized.append(
+                {
+                    "id": str(record.get("id", "")),
+                    "vector": list(record.get("vector", [])),
+                    "content": str(record.get("content", "")),
+                    "metadata": dict(record.get("metadata", {})),
+                }
+            )
+        self._records.extend(normalized)
+
+    def query(
+        self,
+        vector: Sequence[float],
+        top_k: int,
+        filters: Optional[Mapping[str, Any]] = None,
+        trace: Optional[Any] = None,
+    ) -> List[Mapping[str, Any]]:
+        if top_k <= 0:
+            raise ValueError("top_k must be positive")
+        ranked = []
+        for item in self._records:
+            if filters:
+                matched = True
+                for key, value in filters.items():
+                    if item["metadata"].get(key) != value:
+                        matched = False
+                        break
+                if not matched:
+                    continue
+            score = float(len(vector))
+            ranked.append(
+                {
+                    "id": item["id"],
+                    "score": score,
+                    "content": item["content"],
+                    "metadata": item["metadata"],
+                }
+            )
+        return ranked[:top_k]
+
+
+def test_factory_routes_registered_provider() -> None:
+    provider = "fake"
+    VectorStoreFactory.register(provider, FakeVectorStore)
+    try:
+        settings = Settings(vector_store=VectorStoreConfig(provider=provider))
+        instance = VectorStoreFactory.create(settings)
+        assert isinstance(instance, FakeVectorStore)
+    finally:
+        VectorStoreFactory.unregister(provider)
+
+
+def test_factory_supports_mapping_settings() -> None:
+    provider = "mapping-provider"
+    VectorStoreFactory.register(provider, FakeVectorStore)
+    try:
+        settings = {"vector_store": {"provider": provider}}
+        instance = VectorStoreFactory.create(settings)
+        assert isinstance(instance, FakeVectorStore)
+    finally:
+        VectorStoreFactory.unregister(provider)
+
+
+def test_factory_raises_for_unknown_provider() -> None:
+    settings = Settings(vector_store=VectorStoreConfig(provider="unknown-provider"))
+    with pytest.raises(ValueError) as exc_info:
+        VectorStoreFactory.create(settings)
+    assert "Unknown vector_store provider: unknown_provider" in str(exc_info.value)
+
+
+def test_vector_store_contract_query_shape() -> None:
+    provider = "contract-provider"
+    VectorStoreFactory.register(provider, FakeVectorStore)
+    try:
+        settings = Settings(vector_store=VectorStoreConfig(provider=provider))
+        store = VectorStoreFactory.create(settings)
+        store.upsert(
+            [
+                {
+                    "id": "chunk-1",
+                    "vector": [0.1, 0.2],
+                    "content": "hello",
+                    "metadata": {"collection": "default"},
+                }
+            ]
+        )
+        results = store.query([1.0, 2.0], top_k=1, filters={"collection": "default"})
+        assert isinstance(results, list)
+        assert len(results) == 1
+        result = results[0]
+        assert set(["id", "score", "content", "metadata"]).issubset(result.keys())
+        assert isinstance(result["id"], str)
+        assert isinstance(result["score"], float)
+        assert isinstance(result["content"], str)
+        assert isinstance(result["metadata"], dict)
+    finally:
+        VectorStoreFactory.unregister(provider)
+
+
+def test_vector_store_contract_rejects_invalid_top_k() -> None:
+    provider = "invalid-top-k"
+    VectorStoreFactory.register(provider, FakeVectorStore)
+    try:
+        settings = Settings(vector_store=VectorStoreConfig(provider=provider))
+        store = VectorStoreFactory.create(settings)
+        with pytest.raises(ValueError) as exc_info:
+            store.query([1.0], top_k=0)
+        assert "top_k must be positive" in str(exc_info.value)
+    finally:
+        VectorStoreFactory.unregister(provider)

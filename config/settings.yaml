@@ -6,6 +6,10 @@ embedding:
   provider: openai
   model: text-embedding-3-small
   dimensions: 1536
+splitter:
+  provider: recursive
+  chunk_size: 800
+  chunk_overlap: 100
 vector_store:
   provider: chroma
   collection: default

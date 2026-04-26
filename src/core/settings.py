@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Sequence
 
 import yaml
 
@@ -21,6 +23,14 @@ class EmbeddingSettings:
     provider: str
     model: str
     dimensions: int = 0
+
+
+@dataclass
+class SplitterSettings:
+    provider: str = "recursive"
+    chunk_size: int = 800
+    chunk_overlap: int = 100
+    separators: Optional[List[str]] = None
 
 
 @dataclass
@@ -58,6 +68,7 @@ class ObservabilitySettings:
 class Settings:
     llm: LLMSettings
     embedding: EmbeddingSettings
+    splitter: SplitterSettings
     vector_store: VectorStoreSettings
     retrieval: RetrievalSettings
     rerank: RerankSettings
@@ -77,6 +88,12 @@ def load_settings(path: str) -> Settings:
             provider=_require_str(raw, "embedding.provider"),
             model=_require_str(raw, "embedding.model"),
             dimensions=_optional_int(raw, "embedding.dimensions", 0),
+        ),
+        splitter=SplitterSettings(
+            provider=_optional_str(raw, "splitter.provider", "recursive"),
+            chunk_size=_optional_int(raw, "splitter.chunk_size", 800),
+            chunk_overlap=_optional_int(raw, "splitter.chunk_overlap", 100),
+            separators=_optional_str_list(raw, "splitter.separators", None),
         ),
         vector_store=VectorStoreSettings(
             provider=_require_str(raw, "vector_store.provider"),
@@ -113,6 +130,12 @@ def validate_settings(settings: Settings) -> None:
         raise SettingsError("Missing required field: llm.provider")
     if not settings.embedding.provider:
         raise SettingsError("Missing required field: embedding.provider")
+    if not settings.splitter.provider:
+        raise SettingsError("Missing required field: splitter.provider")
+    if settings.splitter.chunk_size <= 0:
+        raise SettingsError("Invalid value for field: splitter.chunk_size")
+    if settings.splitter.chunk_overlap < 0:
+        raise SettingsError("Invalid value for field: splitter.chunk_overlap")
     if settings.retrieval.top_k <= 0:
         raise SettingsError("Invalid value for field: retrieval.top_k")
     if not settings.evaluation.backends:
@@ -199,3 +222,19 @@ def _require_str_list(raw: Dict[str, Any], field: str) -> List[str]:
     if not all(isinstance(item, str) and item.strip() for item in value):
         raise SettingsError(f"Invalid value for field: {field}")
     return value
+
+
+def _optional_str_list(
+    raw: Dict[str, Any], field: str, default: Optional[List[str]]
+) -> Optional[List[str]]:
+    value = _optional_get(raw, field, default)
+    if value is None:
+        return None
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise SettingsError(f"Invalid value for field: {field}")
+    output: List[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise SettingsError(f"Invalid value for field: {field}")
+        output.append(item)
+    return output

@@ -30,3 +30,8 @@ ingestion:
   chunk_refiner:
     use_llm: false
     prompt_path: config/prompts/chunk_refinement.txt
+  metadata_enricher:
+    use_llm: false
+  image_captioner:
+    use_vision_llm: false
+    prompt_path: config/prompts/image_captioning.txt

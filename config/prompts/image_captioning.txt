@@ -1,1 +1,7 @@
 Describe the image content as factual text.
+Do not invent visual details.
+Use concise language.
+
+Image ID: {image_id}
+Context:
+{chunk_text}

@@ -71,8 +71,21 @@ class ChunkRefinerSettings:
 
 
 @dataclass
+class MetadataEnricherSettings:
+    use_llm: bool = False
+
+
+@dataclass
+class ImageCaptionerSettings:
+    use_vision_llm: bool = False
+    prompt_path: str = "config/prompts/image_captioning.txt"
+
+
+@dataclass
 class IngestionSettings:
     chunk_refiner: ChunkRefinerSettings
+    metadata_enricher: MetadataEnricherSettings
+    image_captioner: ImageCaptionerSettings
 
 
 @dataclass
@@ -140,7 +153,20 @@ def load_settings(path: str) -> Settings:
                     "ingestion.chunk_refiner.prompt_path",
                     "config/prompts/chunk_refinement.txt",
                 ),
-            )
+            ),
+            metadata_enricher=MetadataEnricherSettings(
+                use_llm=_optional_bool(raw, "ingestion.metadata_enricher.use_llm", False)
+            ),
+            image_captioner=ImageCaptionerSettings(
+                use_vision_llm=_optional_bool(
+                    raw, "ingestion.image_captioner.use_vision_llm", False
+                ),
+                prompt_path=_optional_str(
+                    raw,
+                    "ingestion.image_captioner.prompt_path",
+                    "config/prompts/image_captioning.txt",
+                ),
+            ),
         ),
     )
     validate_settings(settings)
@@ -162,6 +188,8 @@ def validate_settings(settings: Settings) -> None:
         raise SettingsError("Invalid value for field: retrieval.top_k")
     if not settings.ingestion.chunk_refiner.prompt_path:
         raise SettingsError("Invalid value for field: ingestion.chunk_refiner.prompt_path")
+    if not settings.ingestion.image_captioner.prompt_path:
+        raise SettingsError("Invalid value for field: ingestion.image_captioner.prompt_path")
     if not settings.evaluation.backends:
         raise SettingsError("Missing required field: evaluation.backends")
 

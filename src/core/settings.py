@@ -65,6 +65,17 @@ class ObservabilitySettings:
 
 
 @dataclass
+class ChunkRefinerSettings:
+    use_llm: bool = False
+    prompt_path: str = "config/prompts/chunk_refinement.txt"
+
+
+@dataclass
+class IngestionSettings:
+    chunk_refiner: ChunkRefinerSettings
+
+
+@dataclass
 class Settings:
     llm: LLMSettings
     embedding: EmbeddingSettings
@@ -74,6 +85,7 @@ class Settings:
     rerank: RerankSettings
     evaluation: EvaluationSettings
     observability: ObservabilitySettings
+    ingestion: IngestionSettings
 
 
 def load_settings(path: str) -> Settings:
@@ -120,6 +132,16 @@ def load_settings(path: str) -> Settings:
             enabled=_require_bool(raw, "observability.enabled"),
             log_file=_optional_str(raw, "observability.log_file", "logs/traces.jsonl"),
         ),
+        ingestion=IngestionSettings(
+            chunk_refiner=ChunkRefinerSettings(
+                use_llm=_optional_bool(raw, "ingestion.chunk_refiner.use_llm", False),
+                prompt_path=_optional_str(
+                    raw,
+                    "ingestion.chunk_refiner.prompt_path",
+                    "config/prompts/chunk_refinement.txt",
+                ),
+            )
+        ),
     )
     validate_settings(settings)
     return settings
@@ -138,6 +160,8 @@ def validate_settings(settings: Settings) -> None:
         raise SettingsError("Invalid value for field: splitter.chunk_overlap")
     if settings.retrieval.top_k <= 0:
         raise SettingsError("Invalid value for field: retrieval.top_k")
+    if not settings.ingestion.chunk_refiner.prompt_path:
+        raise SettingsError("Invalid value for field: ingestion.chunk_refiner.prompt_path")
     if not settings.evaluation.backends:
         raise SettingsError("Missing required field: evaluation.backends")
 

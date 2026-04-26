@@ -1,0 +1,34 @@
+{
+  "typical_noise_scenario": {
+    "input": "Page 1 of 2\n\nInternal Use Only\n\n## Intro\n\nThis   is   a   sample.\n\n---\n\nFooter",
+    "expected": "## Intro\n\nThis is a sample.\n\nFooter"
+  },
+  "ocr_errors": {
+    "input": "Th1s   1s  OCR    t3xt.\n\nPage 2",
+    "expected": "Th1s 1s OCR t3xt."
+  },
+  "page_header_footer": {
+    "input": "Page 9 of 10\n\nChapter text\n\n第 9 页",
+    "expected": "Chapter text"
+  },
+  "excessive_whitespace": {
+    "input": "A      B\n\n\n\nC\t\tD",
+    "expected": "A B\n\nC D"
+  },
+  "format_markers": {
+    "input": "<div>Title</div>\n\n<!-- hidden -->\n\n___\n\nBody",
+    "expected": "Title\n\nBody"
+  },
+  "clean_text": {
+    "input": "This is clean.\n\nSecond paragraph.",
+    "expected": "This is clean.\n\nSecond paragraph."
+  },
+  "code_blocks": {
+    "input": "Header\n\n```python\ndef add(a, b):\n    return a + b\n```\n\nPage 3",
+    "expected_contains": "```python\ndef add(a, b):\n    return a + b\n```"
+  },
+  "mixed_noise": {
+    "input": "Confidential\n\n# Title\n\n<data>Signal</data>\n\n<!-- c -->\n\nPage 4 of 9\n\nUseful text",
+    "expected": "# Title\n\nSignal\n\nUseful text"
+  }
+}

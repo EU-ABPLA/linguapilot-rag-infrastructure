@@ -1,1 +1,5 @@
 Refine the chunk while preserving all factual information.
+Remove noisy headers, footers, and formatting artifacts.
+Do not invent new facts.
+
+{text}

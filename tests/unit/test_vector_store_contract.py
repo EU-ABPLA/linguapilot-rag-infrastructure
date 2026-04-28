@@ -66,6 +66,10 @@ class FakeVectorStore(BaseVectorStore):
             )
         return ranked[:top_k]
 
+    def get_by_ids(self, ids: Sequence[str]) -> List[Mapping[str, Any]]:
+        lookup = set(str(item) for item in ids)
+        return [item for item in self._records if item["id"] in lookup]
+
 
 def test_factory_routes_registered_provider() -> None:
     provider = "fake"
@@ -134,5 +138,34 @@ def test_vector_store_contract_rejects_invalid_top_k() -> None:
         with pytest.raises(ValueError) as exc_info:
             store.query([1.0], top_k=0)
         assert "top_k must be positive" in str(exc_info.value)
+    finally:
+        VectorStoreFactory.unregister(provider)
+
+
+def test_vector_store_contract_get_by_ids_shape() -> None:
+    provider = "get-by-ids-provider"
+    VectorStoreFactory.register(provider, FakeVectorStore)
+    try:
+        settings = Settings(vector_store=VectorStoreConfig(provider=provider))
+        store = VectorStoreFactory.create(settings)
+        store.upsert(
+            [
+                {
+                    "id": "chunk-1",
+                    "vector": [0.1, 0.2],
+                    "content": "hello",
+                    "metadata": {"collection": "default"},
+                },
+                {
+                    "id": "chunk-2",
+                    "vector": [0.2, 0.1],
+                    "content": "world",
+                    "metadata": {"collection": "default"},
+                },
+            ]
+        )
+        rows = store.get_by_ids(["chunk-2", "missing", "chunk-1"])
+        assert [item["id"] for item in rows] == ["chunk-1", "chunk-2"]
+        assert set(["id", "content", "metadata"]).issubset(rows[0].keys())
     finally:
         VectorStoreFactory.unregister(provider)

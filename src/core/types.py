@@ -139,6 +139,47 @@ class ChunkRecord:
         return cls.from_dict(parsed)
 
 
+@dataclass(frozen=True)
+class RetrievalResult:
+    chunk_id: str
+    score: float
+    text: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        _validate_non_empty_str(self.chunk_id, "chunk_id")
+        _validate_float(self.score, "score")
+        _validate_str(self.text, "text")
+        _validate_generic_mapping(self.metadata, "metadata")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "chunk_id": self.chunk_id,
+            "score": float(self.score),
+            "text": self.text,
+            "metadata": _clone_mapping(self.metadata),
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), ensure_ascii=True, sort_keys=True)
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "RetrievalResult":
+        return cls(
+            chunk_id=str(data.get("chunk_id", data.get("id", ""))),
+            score=_coerce_float(data.get("score", 0.0), "score"),
+            text=str(data.get("text", data.get("content", ""))),
+            metadata=_coerce_generic_mapping(data.get("metadata", {}), "metadata"),
+        )
+
+    @classmethod
+    def from_json(cls, raw: str) -> "RetrievalResult":
+        parsed = json.loads(raw)
+        if not isinstance(parsed, Mapping):
+            raise ValueError("RetrievalResult json must be an object")
+        return cls.from_dict(parsed)
+
+
 def _validate_metadata(metadata: Mapping[str, Any]) -> None:
     if not isinstance(metadata, Mapping):
         raise ValueError("metadata must be a mapping")
@@ -184,6 +225,16 @@ def _validate_int(value: Any, field_name: str) -> None:
         raise ValueError(field_name + " must be an integer")
 
 
+def _validate_float(value: Any, field_name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(field_name + " must be numeric")
+
+
+def _validate_generic_mapping(value: Any, field_name: str) -> None:
+    if not isinstance(value, Mapping):
+        raise ValueError(field_name + " must be a mapping")
+
+
 def _validate_optional_vector(vector: Optional[Sequence[Any]], field_name: str) -> None:
     if vector is None:
         return
@@ -225,6 +276,18 @@ def _coerce_optional_vector(value: Any, field_name: str) -> Optional[List[float]
             raise ValueError(field_name + " must contain numeric values")
         output.append(float(dim))
     return output
+
+
+def _coerce_float(value: Any, field_name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(field_name + " must be numeric")
+    return float(value)
+
+
+def _coerce_generic_mapping(value: Any, field_name: str) -> Dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(field_name + " must be a mapping")
+    return _clone_mapping(value)
 
 
 def _clone_mapping(mapping: Mapping[str, Any]) -> Dict[str, Any]:

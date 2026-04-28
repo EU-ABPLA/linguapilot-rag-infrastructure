@@ -38,6 +38,14 @@ class FakeVectorStore(BaseVectorStore):
     ) -> List[Mapping[str, Any]]:
         return []
 
+    def get_by_ids(self, ids: Sequence[str]) -> List[Mapping[str, Any]]:
+        output: List[Mapping[str, Any]] = []
+        for item_id in ids:
+            record = self.records.get(str(item_id))
+            if record is not None:
+                output.append(record)
+        return output
+
 
 def _chunk(index: int, text: str, source_path: str = "data/docs/sample.md") -> Chunk:
     return Chunk(

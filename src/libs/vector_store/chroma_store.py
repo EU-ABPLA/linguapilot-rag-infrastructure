@@ -63,12 +63,35 @@ class ChromaStore(BaseVectorStore):
 				{
 					"id": item["id"],
 					"score": score,
+					"text": item["content"],
 					"content": item["content"],
 					"metadata": dict(metadata),
 				}
 			)
 		ranked.sort(key=lambda x: x["score"], reverse=True)
 		return ranked[:top_k]
+
+	def get_by_ids(self, ids: Sequence[str]) -> List[Mapping[str, Any]]:
+		results: List[Mapping[str, Any]] = []
+		for item_id in ids:
+			if not isinstance(item_id, str):
+				continue
+			normalized_id = item_id.strip()
+			if not normalized_id:
+				continue
+			record = self._records.get(normalized_id)
+			if record is None:
+				continue
+			metadata = record["metadata"]
+			results.append(
+				{
+					"id": record["id"],
+					"text": record["content"],
+					"content": record["content"],
+					"metadata": dict(metadata),
+				}
+			)
+		return results
 
 	def _load(self) -> None:
 		if not self._db_file.exists():

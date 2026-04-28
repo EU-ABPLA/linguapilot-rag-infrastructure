@@ -19,6 +19,10 @@ class BaseVectorStore(ABC):
 	) -> List[Mapping[str, Any]]:
 		raise NotImplementedError
 
+	@abstractmethod
+	def get_by_ids(self, ids: Sequence[str]) -> List[Mapping[str, Any]]:
+		raise NotImplementedError
+
 
 class UnavailableVectorStore(BaseVectorStore):
 	def __init__(self, provider: str):
@@ -38,6 +42,11 @@ class UnavailableVectorStore(BaseVectorStore):
 		filters: Optional[Mapping[str, Any]] = None,
 		trace: Optional[Any] = None,
 	) -> List[Mapping[str, Any]]:
+		raise NotImplementedError(
+			"VectorStore provider '" + self.provider + "' is not implemented yet"
+		)
+
+	def get_by_ids(self, ids: Sequence[str]) -> List[Mapping[str, Any]]:
 		raise NotImplementedError(
 			"VectorStore provider '" + self.provider + "' is not implemented yet"
 		)

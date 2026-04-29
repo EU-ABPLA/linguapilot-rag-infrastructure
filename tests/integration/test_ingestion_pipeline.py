@@ -107,13 +107,14 @@ def test_ingestion_pipeline_runs_full_flow_and_persists_outputs(tmp_path: Path) 
     _write_complex_pdf(source_pdf)
     pipeline = _create_pipeline(tmp_path, batch_processor=FakeBatchProcessor())
     progress_events: List[str] = []
+    trace = TraceContext(trace_type="ingestion")
     result = pipeline.run(
         str(source_pdf),
         collection="default",
         on_progress=lambda stage, current, total: progress_events.append(
             stage + ":" + str(current) + "/" + str(total)
         ),
-        trace=TraceContext(trace_type="ingestion"),
+        trace=trace,
     )
     assert isinstance(result, IngestionResult)
     assert result.status == "success"
@@ -135,6 +136,21 @@ def test_ingestion_pipeline_runs_full_flow_and_persists_outputs(tmp_path: Path) 
         "embed",
         "upsert",
     }
+    required_stages = {"load", "split", "transform", "embed", "upsert"}
+    by_stage = {}
+    for item in trace.stages:
+        name = item.get("stage")
+        if name in required_stages:
+            by_stage[name] = item
+    assert set(by_stage.keys()) == required_stages
+    for stage_name in required_stages:
+        stage_item = by_stage[stage_name]
+        assert isinstance(stage_item.get("elapsed_ms"), float)
+        details = stage_item.get("details", {})
+        assert isinstance(details.get("method"), str) and details["method"]
+        assert isinstance(details.get("provider"), str) and details["provider"]
+    payload = trace.to_dict()
+    assert payload["trace_type"] == "ingestion"
 
 
 @pytest.mark.integration

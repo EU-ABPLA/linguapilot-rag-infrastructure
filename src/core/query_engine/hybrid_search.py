@@ -35,6 +35,17 @@ class HybridSearch:
     ) -> List[RetrievalResult]:
         resolved_top_k = _resolve_top_k(self._default_top_k, top_k)
         processed = self._query_processor.process(query, filters=filters, trace=trace)
+        if trace is not None:
+            trace.record_stage(
+                "query_processing",
+                {
+                    "status": "ok",
+                    "method": "rule",
+                    "provider": "query_processor",
+                    "keyword_count": len(processed.keywords),
+                    "filter_count": len(processed.filters),
+                },
+            )
         dense_error: Optional[Exception] = None
         sparse_error: Optional[Exception] = None
         dense_results: List[RetrievalResult] = []
@@ -46,16 +57,64 @@ class HybridSearch:
                 filters=processed.filters,
                 trace=trace,
             )
+            if trace is not None:
+                trace.record_stage(
+                    "dense_retrieval",
+                    {
+                        "status": "ok",
+                        "method": "vector",
+                        "provider": _resolve_provider(self._settings, "embedding", "unknown"),
+                        "top_k": resolved_top_k,
+                        "result_count": len(dense_results),
+                    },
+                )
         except Exception as exc:
             dense_error = exc
+            if trace is not None:
+                trace.record_stage(
+                    "dense_retrieval",
+                    {
+                        "status": "fallback",
+                        "method": "vector",
+                        "provider": _resolve_provider(self._settings, "embedding", "unknown"),
+                        "reason": str(exc),
+                        "top_k": resolved_top_k,
+                        "result_count": 0,
+                    },
+                )
         try:
             sparse_results = self._sparse_retriever.retrieve(
                 processed.keywords,
                 top_k=resolved_top_k,
                 trace=trace,
             )
+            if trace is not None:
+                trace.record_stage(
+                    "sparse_retrieval",
+                    {
+                        "status": "ok",
+                        "method": "bm25",
+                        "provider": "bm25",
+                        "top_k": resolved_top_k,
+                        "keyword_count": len(processed.keywords),
+                        "result_count": len(sparse_results),
+                    },
+                )
         except Exception as exc:
             sparse_error = exc
+            if trace is not None:
+                trace.record_stage(
+                    "sparse_retrieval",
+                    {
+                        "status": "fallback",
+                        "method": "bm25",
+                        "provider": "bm25",
+                        "reason": str(exc),
+                        "top_k": resolved_top_k,
+                        "keyword_count": len(processed.keywords),
+                        "result_count": 0,
+                    },
+                )
         if dense_error is not None and sparse_error is not None:
             raise RuntimeError(
                 "hybrid search failed: both routes unavailable; dense="
@@ -69,6 +128,17 @@ class HybridSearch:
             top_k=resolved_top_k,
             trace=trace,
         )
+        if trace is not None:
+            trace.record_stage(
+                "fusion",
+                {
+                    "status": "ok",
+                    "method": "rrf",
+                    "provider": "fusion",
+                    "dense_count": len(dense_results),
+                    "sparse_count": len(sparse_results),
+                },
+            )
         filtered = self._apply_metadata_filters(fused, processed.filters)
         output = filtered[:resolved_top_k]
         if trace is not None:
@@ -135,3 +205,25 @@ def _extract_top_k(settings: Any) -> int:
     if isinstance(value, int) and not isinstance(value, bool) and value > 0:
         return value
     return 5
+
+
+def _resolve_provider(settings: Any, section: str, default: str) -> str:
+    if isinstance(settings, Mapping):
+        block = settings.get(section)
+        if isinstance(block, Mapping):
+            value = block.get("provider")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        value = settings.get(section + "_provider")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return default
+    block = getattr(settings, section, None)
+    if block is not None:
+        value = getattr(block, "provider", None)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    value = getattr(settings, section + "_provider", None)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return default

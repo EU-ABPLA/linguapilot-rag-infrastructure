@@ -34,12 +34,14 @@ class Reranker:
         if not self._enabled:
             output = normalized_candidates[:resolved_top_k]
             if trace is not None:
-                trace.record_stage(
-                    "reranker",
-                    {
+                _record_rerank_stage(
+                    trace=trace,
+                    details={
                         "status": "skipped",
                         "reason": "disabled",
                         "fallback": False,
+                        "method": "cross_encoder",
+                        "provider": _extract_provider(self._settings),
                         "result_count": len(output),
                     },
                 )
@@ -49,11 +51,13 @@ class Reranker:
             ranked = self._backend.rerank(normalized_query, payload, trace=trace)
             output = _from_payload(ranked, normalized_candidates, resolved_top_k)
             if trace is not None:
-                trace.record_stage(
-                    "reranker",
-                    {
+                _record_rerank_stage(
+                    trace=trace,
+                    details={
                         "status": "ok",
                         "fallback": False,
+                        "method": "cross_encoder",
+                        "provider": _extract_provider(self._settings),
                         "input_count": len(normalized_candidates),
                         "result_count": len(output),
                     },
@@ -62,12 +66,14 @@ class Reranker:
         except Exception as exc:
             output = _mark_fallback(normalized_candidates[:resolved_top_k], str(exc))
             if trace is not None:
-                trace.record_stage(
-                    "reranker",
-                    {
+                _record_rerank_stage(
+                    trace=trace,
+                    details={
                         "status": "fallback",
                         "fallback": True,
                         "reason": str(exc),
+                        "method": "cross_encoder",
+                        "provider": _extract_provider(self._settings),
                         "input_count": len(normalized_candidates),
                         "result_count": len(output),
                     },
@@ -204,3 +210,30 @@ def _extract_enabled(settings: Any) -> bool:
     if isinstance(value, bool):
         return value
     return True
+
+
+def _extract_provider(settings: Any) -> str:
+    if isinstance(settings, Mapping):
+        rerank = settings.get("rerank")
+        if isinstance(rerank, Mapping):
+            value = rerank.get("provider")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        value = settings.get("provider")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return "unknown"
+    rerank = getattr(settings, "rerank", None)
+    if rerank is not None:
+        value = getattr(rerank, "provider", None)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    value = getattr(settings, "provider", None)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return "unknown"
+
+
+def _record_rerank_stage(trace: TraceContext, details: Dict[str, Any]) -> None:
+    trace.record_stage("rerank", dict(details))
+    trace.record_stage("reranker", dict(details))

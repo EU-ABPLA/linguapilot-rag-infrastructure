@@ -5,10 +5,13 @@ from core.query_engine.dense_retriever import DenseRetriever
 from core.query_engine.fusion import Fusion
 from core.query_engine.hybrid_search import HybridSearch
 from core.query_engine.query_processor import QueryProcessor
+from core.query_engine.reranker import Reranker
 from core.query_engine.sparse_retriever import SparseRetriever
+from core.trace.trace_context import TraceContext
 from core.types import RetrievalResult
 from ingestion.storage.bm25_indexer import BM25Indexer
 from libs.embedding.base_embedding import BaseEmbedding
+from libs.reranker.base_reranker import BaseReranker
 from libs.vector_store.chroma_store import ChromaStore
 
 
@@ -47,6 +50,16 @@ class BrokenSparseRetriever:
         trace: Optional[Any] = None,
     ) -> List[RetrievalResult]:
         raise RuntimeError("sparse route error")
+
+
+class IdentityRerankerBackend(BaseReranker):
+    def rerank(
+        self,
+        query: str,
+        candidates: Sequence[Mapping[str, Any]],
+        trace: Optional[Any] = None,
+    ) -> List[Mapping[str, Any]]:
+        return list(candidates)
 
 
 def _prepare_store_and_index(tmp_path: Path) -> Tuple[ChromaStore, BM25Indexer]:
@@ -189,3 +202,40 @@ def test_hybrid_search_fallback_when_sparse_route_fails(tmp_path: Path) -> None:
     results = hybrid.search("openai setup", top_k=2)
     assert len(results) >= 1
     assert results[0].chunk_id == "chunk-openai-guide"
+
+
+def test_hybrid_search_and_rerank_record_trace_stages(tmp_path: Path) -> None:
+    hybrid = _build_hybrid(tmp_path)
+    reranker = Reranker(
+        settings={"retrieval": {"top_k": 3}, "rerank": {"enabled": True, "provider": "local"}},
+        backend=IdentityRerankerBackend(),
+    )
+    trace = TraceContext(trace_type="query")
+    candidates = hybrid.search("How to setup Azure", top_k=3, trace=trace)
+    output = reranker.rerank("How to setup Azure", candidates, top_k=2, trace=trace)
+    assert len(output) == 2
+    details_by_stage = {}
+    for item in trace.stages:
+        stage_name = item.get("stage")
+        if stage_name in {
+            "query_processing",
+            "dense_retrieval",
+            "sparse_retrieval",
+            "fusion",
+            "rerank",
+        }:
+            details_by_stage[stage_name] = item
+    assert set(details_by_stage.keys()) == {
+        "query_processing",
+        "dense_retrieval",
+        "sparse_retrieval",
+        "fusion",
+        "rerank",
+    }
+    for stage_name, stage_item in details_by_stage.items():
+        assert isinstance(stage_item.get("elapsed_ms"), float)
+        details = stage_item["details"]
+        assert isinstance(details.get("method"), str) and details["method"]
+        assert isinstance(details.get("provider"), str) and details["provider"]
+    payload = trace.to_dict()
+    assert payload["trace_type"] == "query"

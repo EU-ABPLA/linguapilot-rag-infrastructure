@@ -93,20 +93,61 @@ class IngestionPipeline:
             )
         try:
             document = _run_stage("load", lambda: self._loader.load(normalized_path))
-            _record_trace(trace, "load", {"status": "ok", "source_path": normalized_path})
+            _record_trace(
+                trace,
+                "load",
+                {
+                    "status": "ok",
+                    "method": "document_loader",
+                    "provider": _resolve_loader_provider(self._loader),
+                    "source_path": normalized_path,
+                },
+            )
             _emit_progress(on_progress, "load", 1, 1)
             chunks = _run_stage("split", lambda: self._chunker.split_document(document))
-            _record_trace(trace, "split", {"status": "ok", "chunk_count": len(chunks)})
+            _record_trace(
+                trace,
+                "split",
+                {
+                    "status": "ok",
+                    "method": "chunking",
+                    "provider": _resolve_splitter_provider(self._settings),
+                    "chunk_count": len(chunks),
+                },
+            )
             _emit_progress(on_progress, "split", 1, 1)
             transformed = _run_stage(
                 "transform",
                 lambda: self._apply_transforms(chunks, on_progress=on_progress, trace=trace),
             )
+            _record_trace(
+                trace,
+                "transform",
+                {
+                    "status": "ok",
+                    "method": "transform_chain",
+                    "provider": "->".join(
+                        [item.__class__.__name__ for item in self._transforms]
+                    )
+                    if self._transforms
+                    else "none",
+                    "chunk_count": len(transformed),
+                },
+            )
             encoded = _run_stage(
                 "embed",
                 lambda: self._batch_processor.process(transformed, trace=trace),
             )
-            _record_trace(trace, "embed", {"status": "ok", "chunk_count": len(encoded)})
+            _record_trace(
+                trace,
+                "embed",
+                {
+                    "status": "ok",
+                    "method": "batch_embedding",
+                    "provider": _resolve_embedding_provider(self._settings),
+                    "chunk_count": len(encoded),
+                },
+            )
             _emit_progress(on_progress, "embed", 1, 1)
             upserted = _run_stage(
                 "upsert",
@@ -123,6 +164,8 @@ class IngestionPipeline:
                 "upsert",
                 {
                     "status": "ok",
+                    "method": "vector_store_upsert",
+                    "provider": _resolve_vector_store_provider(self._settings),
                     "vector_count": len(upserted["vector_ids"]),
                     "image_count": len(upserted["saved_images"]),
                 },
@@ -257,3 +300,55 @@ def _record_trace(
     if trace is None:
         return
     trace.record_stage(stage, details or {})
+
+
+def _resolve_loader_provider(loader: BaseLoader) -> str:
+    name = loader.__class__.__name__.lower()
+    if "pdf" in name:
+        return "pdf"
+    return loader.__class__.__name__
+
+
+def _resolve_splitter_provider(settings: Any) -> str:
+    if isinstance(settings, dict):
+        splitter = settings.get("splitter")
+        if isinstance(splitter, dict):
+            value = splitter.get("provider")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    splitter = getattr(settings, "splitter", None)
+    if splitter is not None:
+        value = getattr(splitter, "provider", None)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return "unknown"
+
+
+def _resolve_embedding_provider(settings: Any) -> str:
+    if isinstance(settings, dict):
+        embedding = settings.get("embedding")
+        if isinstance(embedding, dict):
+            value = embedding.get("provider")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    embedding = getattr(settings, "embedding", None)
+    if embedding is not None:
+        value = getattr(embedding, "provider", None)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return "unknown"
+
+
+def _resolve_vector_store_provider(settings: Any) -> str:
+    if isinstance(settings, dict):
+        vector_store = settings.get("vector_store")
+        if isinstance(vector_store, dict):
+            value = vector_store.get("provider")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    vector_store = getattr(settings, "vector_store", None)
+    if vector_store is not None:
+        value = getattr(vector_store, "provider", None)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return "unknown"

@@ -3,12 +3,18 @@ from __future__ import annotations
 from typing import Any, Dict, List, Sequence
 
 from core.response.citation_generator import CitationGenerator
+from core.response.multimodal_assembler import MultimodalAssembler
 from core.types import RetrievalResult
 
 
 class ResponseBuilder:
-    def __init__(self, citation_generator: CitationGenerator | None = None):
+    def __init__(
+        self,
+        citation_generator: CitationGenerator | None = None,
+        multimodal_assembler: MultimodalAssembler | None = None,
+    ):
         self._citation_generator = citation_generator or CitationGenerator()
+        self._multimodal_assembler = multimodal_assembler or MultimodalAssembler()
 
     def build(
         self, retrieval_results: Sequence[RetrievalResult], query: str
@@ -31,8 +37,11 @@ class ResponseBuilder:
             }
         citations = self._citation_generator.generate(normalized_results)
         markdown = _build_markdown_answer(normalized_query, normalized_results, citations)
+        image_content = self._multimodal_assembler.build_image_content(normalized_results)
+        content: List[Dict[str, Any]] = [{"type": "text", "text": markdown}]
+        content.extend(image_content)
         return {
-            "content": [{"type": "text", "text": markdown}],
+            "content": content,
             "structuredContent": {
                 "query": normalized_query,
                 "citations": citations,

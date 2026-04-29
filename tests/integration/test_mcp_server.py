@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import base64
 import json
 import subprocess
 import sys
 from pathlib import Path
+
+from core.response.response_builder import ResponseBuilder
+from core.types import RetrievalResult
 
 
 def test_mcp_server_initialize_and_stdio_constraints() -> None:
@@ -95,3 +99,28 @@ def test_mcp_server_query_tool_returns_structured_payload() -> None:
     assert "structuredContent" in result
     assert isinstance(result["content"], list)
     assert isinstance(result["structuredContent"]["citations"], list)
+
+
+def test_mcp_response_contains_image_content_when_chunk_has_images(tmp_path: Path) -> None:
+    image_path = tmp_path / "hit.png"
+    image_bytes = b"\x89PNG\r\n\x1a\nmultimodal-test"
+    image_path.write_bytes(image_bytes)
+    result = RetrievalResult(
+        chunk_id="chunk-image-1",
+        score=0.95,
+        text="This chunk references an image.",
+        metadata={
+            "source_path": "docs/image.md",
+            "image_refs": ["img-1"],
+            "images": [{"id": "img-1", "path": str(image_path)}],
+        },
+    )
+    payload = ResponseBuilder().build([result], "show me image")
+    content = payload["content"]
+    assert content[0]["type"] == "text"
+    image_items = [item for item in content if item.get("type") == "image"]
+    assert len(image_items) == 1
+    image_item = image_items[0]
+    assert image_item["mimeType"] == "image/png"
+    decoded = base64.b64decode(image_item["data"])
+    assert decoded == image_bytes

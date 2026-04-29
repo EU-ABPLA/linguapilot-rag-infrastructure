@@ -4,6 +4,11 @@ import json
 import sys
 from typing import Any, Dict, Mapping, Optional
 
+from mcp_server.protocol_handler import ProtocolHandler
+from mcp_server.tools.query_knowledge_hub import (
+    call_query_knowledge_hub,
+    get_tool_schema,
+)
 from observability.logger import get_logger
 
 _JSONRPC_VERSION = "2.0"
@@ -13,12 +18,18 @@ _SERVER_VERSION = "0.1.0"
 
 def main() -> int:
     logger = get_logger("mcp_server.server")
+    protocol_handler = ProtocolHandler(
+        tool_handlers={"query_knowledge_hub": call_query_knowledge_hub},
+        tool_schemas=[get_tool_schema()],
+        server_name=_SERVER_NAME,
+        server_version=_SERVER_VERSION,
+    )
     logger.info("mcp server started")
     for raw_line in sys.stdin:
         line = raw_line.strip()
         if not line:
             continue
-        response = _handle_line(line, logger=logger)
+        response = _handle_line(line, logger=logger, protocol_handler=protocol_handler)
         if response is None:
             continue
         _write_response(response)
@@ -26,23 +37,25 @@ def main() -> int:
     return 0
 
 
-def _handle_line(line: str, logger: Any) -> Optional[Dict[str, Any]]:
+def _handle_line(
+    line: str,
+    logger: Any,
+    protocol_handler: ProtocolHandler,
+) -> Optional[Dict[str, Any]]:
     try:
         request = json.loads(line)
     except Exception:
         return _error_response(None, code=-32700, message="Parse error")
     if not isinstance(request, Mapping):
         return _error_response(None, code=-32600, message="Invalid Request")
-    request_id = request.get("id")
     method = request.get("method")
     if method == "initialize":
         logger.info("initialize request received")
-        return _ok_response(request_id, _initialize_result(request.get("params")))
     if method == "shutdown":
-        return _ok_response(request_id, None)
+        return protocol_handler.handle_request(request)
     if method == "exit":
         return None
-    return _error_response(request_id, code=-32601, message="Method not found")
+    return protocol_handler.handle_request(request)
 
 
 def _initialize_result(params: Any) -> Dict[str, Any]:

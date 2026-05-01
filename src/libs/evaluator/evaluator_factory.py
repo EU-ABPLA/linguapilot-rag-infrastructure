@@ -2,6 +2,7 @@ from typing import Any, Callable, Dict, Mapping
 
 from libs.evaluator.base_evaluator import BaseEvaluator, UnavailableEvaluator
 from libs.evaluator.custom_evaluator import CustomEvaluator
+from observability.evaluation.ragas_evaluator import RagasEvaluator
 
 EvaluatorBuilder = Callable[[], BaseEvaluator]
 
@@ -90,8 +91,5 @@ def _backend_from_object(settings: Any) -> Any:
 
 
 EvaluatorFactory.register("custom", CustomEvaluator)
-
-for _backend in ("ragas", "deepeval"):
-	EvaluatorFactory.register(
-		_backend, lambda backend=_backend: UnavailableEvaluator(backend)
-	)
+EvaluatorFactory.register("ragas", RagasEvaluator)
+EvaluatorFactory.register("deepeval", lambda: UnavailableEvaluator("deepeval"))

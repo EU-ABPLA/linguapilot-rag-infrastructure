@@ -122,6 +122,18 @@ class BM25Indexer:
             for chunk_id, score in ranked[:top_k]
         ]
 
+    def remove_document(self, chunk_id: str, persist: bool = True) -> bool:
+        if not isinstance(chunk_id, str) or not chunk_id.strip():
+            raise ValueError("chunk_id must be non-empty")
+        normalized = chunk_id.strip()
+        if normalized not in self._documents:
+            return False
+        self._documents.pop(normalized, None)
+        self._rebuild_index()
+        if persist:
+            self.save()
+        return True
+
     def snapshot(self) -> Dict[str, Any]:
         return {
             "doc_count": int(self._index_payload.get("doc_count", 0)),

@@ -93,6 +93,40 @@ class ChromaStore(BaseVectorStore):
 			)
 		return results
 
+	def get_by_metadata(
+		self,
+		filters: Optional[Mapping[str, Any]] = None,
+	) -> List[Mapping[str, Any]]:
+		results: List[Mapping[str, Any]] = []
+		for item in self._records.values():
+			metadata = item["metadata"]
+			if filters is not None and not _matches_filter(metadata, filters):
+				continue
+			results.append(
+				{
+					"id": item["id"],
+					"text": item["content"],
+					"content": item["content"],
+					"metadata": dict(metadata),
+				}
+			)
+		results.sort(key=lambda entry: str(entry.get("id", "")))
+		return results
+
+	def delete_by_metadata(self, filters: Mapping[str, Any]) -> int:
+		if not isinstance(filters, Mapping) or not filters:
+			raise ValueError("filters must be a non-empty mapping")
+		deleted_ids: List[str] = []
+		for item_id, item in self._records.items():
+			metadata = item.get("metadata", {})
+			if isinstance(metadata, Mapping) and _matches_filter(metadata, filters):
+				deleted_ids.append(item_id)
+		for item_id in deleted_ids:
+			self._records.pop(item_id, None)
+		if deleted_ids:
+			self._save()
+		return len(deleted_ids)
+
 	def get_collection_stats(self) -> Dict[str, Any]:
 		source_paths = set()
 		for item in self._records.values():

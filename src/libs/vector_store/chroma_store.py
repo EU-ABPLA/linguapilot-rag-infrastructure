@@ -93,6 +93,21 @@ class ChromaStore(BaseVectorStore):
 			)
 		return results
 
+	def get_collection_stats(self) -> Dict[str, Any]:
+		source_paths = set()
+		for item in self._records.values():
+			metadata = item.get("metadata", {})
+			if not isinstance(metadata, Mapping):
+				continue
+			source_path = metadata.get("source_path")
+			if isinstance(source_path, str) and source_path.strip():
+				source_paths.add(source_path.strip())
+		return {
+			"collection": self.collection,
+			"vector_records": len(self._records),
+			"unique_sources": len(source_paths),
+		}
+
 	def _load(self) -> None:
 		if not self._db_file.exists():
 			return

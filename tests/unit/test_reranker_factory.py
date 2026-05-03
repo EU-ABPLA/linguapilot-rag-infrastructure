@@ -60,3 +60,24 @@ def test_factory_raises_for_unknown_backend() -> None:
     with pytest.raises(ValueError) as exc_info:
         RerankerFactory.create(settings)
     assert "Unknown reranker backend: unknown_backend" in str(exc_info.value)
+
+
+def test_factory_normalizes_hyphen_backend_name() -> None:
+    settings = {"rerank": {"provider": "cross-encoder"}}
+    instance = RerankerFactory.create(settings)
+    from libs.reranker.cross_encoder_reranker import CrossEncoderReranker
+
+    assert isinstance(instance, CrossEncoderReranker)
+
+
+def test_factory_raises_for_missing_provider_field() -> None:
+    with pytest.raises(ValueError) as exc_info:
+        RerankerFactory.create({"rerank": {}})
+    assert "Missing required field: rerank.provider" in str(exc_info.value)
+
+
+def test_factory_raises_for_blank_provider() -> None:
+    settings = {"rerank": {"provider": "   "}}
+    with pytest.raises(ValueError) as exc_info:
+        RerankerFactory.create(settings)
+    assert "Invalid reranker backend" in str(exc_info.value)

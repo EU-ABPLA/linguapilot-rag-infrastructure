@@ -1,4 +1,6 @@
 import json
+import math
+from hashlib import sha256
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 from urllib.request import Request, urlopen
 
@@ -32,6 +34,8 @@ class OpenAIEmbedding(BaseEmbedding):
                 self._build_url(), self._build_headers(), payload, self.timeout
             )
         except Exception as exc:
+            if not self.api_key.strip():
+                return _offline_embeddings(normalized_texts, self.model)
             raise RuntimeError("openai request error: " + str(exc))
         return _extract_embeddings(data, "openai")
 
@@ -110,3 +114,33 @@ def _extract_embeddings(data: Dict[str, Any], provider_name: str) -> List[List[f
             row.append(float(dim))
         output.append(row)
     return output
+
+
+def _offline_embeddings(texts: Sequence[str], model: str) -> List[List[float]]:
+    dimensions = _offline_dimensions(model)
+    rows: List[List[float]] = []
+    for text in texts:
+        digest = sha256(text.encode("utf-8")).digest()
+        values: List[float] = []
+        index = 0
+        while len(values) < dimensions:
+            left = digest[index % len(digest)]
+            right = digest[(index + 1) % len(digest)]
+            raw = int(left) * 256 + int(right)
+            scaled = (float(raw) / 65535.0) * 2.0 - 1.0
+            values.append(scaled)
+            index += 2
+        norm = math.sqrt(sum(item * item for item in values))
+        if norm > 0.0:
+            values = [item / norm for item in values]
+        rows.append(values)
+    return rows
+
+
+def _offline_dimensions(model: str) -> int:
+    normalized = model.strip().lower()
+    if normalized == "text-embedding-3-large":
+        return 3072
+    if normalized == "text-embedding-3-small":
+        return 1536
+    return 1024

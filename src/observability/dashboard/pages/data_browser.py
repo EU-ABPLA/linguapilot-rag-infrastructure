@@ -43,11 +43,17 @@ def render_page() -> None:
             st.write("Processed At: " + str(detail["processed_at"]))
             st.write("Image Count: " + str(len(detail["images"])))
             st.markdown("### Chunks")
+            chunk_rows = []
             for chunk in detail["chunks"]:
-                chunk_title = "Chunk " + str(chunk["chunk_id"])
-                with st.expander(chunk_title):
-                    st.text(chunk["text"])
-                    st.json(chunk["metadata"])
+                chunk_rows.append(
+                    {
+                        "chunk_id": chunk["chunk_id"],
+                        "text": chunk["text"],
+                        "metadata": chunk["metadata"],
+                    }
+                )
+            if chunk_rows:
+                st.dataframe(chunk_rows, use_container_width=True)
             if detail["images"]:
                 st.markdown("### Images")
                 for image in detail["images"]:

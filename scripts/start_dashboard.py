@@ -11,7 +11,7 @@ def main() -> int:
     if not dashboard_app.exists():
         print("dashboard app not found: " + str(dashboard_app), file=sys.stderr)
         return 1
-    cmd = ["streamlit", "run", str(dashboard_app)]
+    cmd = [sys.executable, "-m", "streamlit", "run", str(dashboard_app)]
     try:
         return subprocess.call(cmd, cwd=str(repo_root))
     except FileNotFoundError:

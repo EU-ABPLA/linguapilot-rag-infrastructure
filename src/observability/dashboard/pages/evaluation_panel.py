@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Sequence
 
+from core.secrets import safe_error_message
+
 def render_page() -> None:
     import streamlit as st
 
@@ -16,7 +18,7 @@ def render_page() -> None:
     try:
         settings = load_settings("config/settings.yaml")
     except SettingsError as exc:
-        st.error(str(exc))
+        st.error(safe_error_message(exc))
         return
     default_backends = list(settings.evaluation.backends)
     options = _backend_options(default_backends)
@@ -43,7 +45,7 @@ def render_page() -> None:
                 )
                 report = runner.run(test_set_path)
             except Exception as exc:
-                st.error(str(exc))
+                st.error(safe_error_message(exc))
                 return
         _push_history(
             {

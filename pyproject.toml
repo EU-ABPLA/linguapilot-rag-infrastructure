@@ -6,7 +6,21 @@ build-backend = "setuptools.build_meta"
 name = "linguapilot-rag-infrastructure"
 version = "0.1.0"
 requires-python = ">=3.10"
-dependencies = ["PyYAML>=6.0"]
+dependencies = [
+  "PyYAML>=6.0",
+  "streamlit>=1.33.0,<2.0.0",
+  "altair>=5.0.0,<6.0.0",
+  "pypdf>=4.2.0"
+]
+
+[project.optional-dependencies]
+evaluation = [
+  "ragas>=0.2.0",
+  "datasets>=2.18.0"
+]
+dev = [
+  "pytest>=8.0.0"
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

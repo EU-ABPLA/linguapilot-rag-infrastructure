@@ -1,11 +1,15 @@
 llm:
-  provider: openai
-  model: gpt-4o-mini
-  api_key: ""
+  provider: "openai"
+  model: "astron-code-latest"
+  api_key: "${LLM_API_KEY}"
+  base_url: "https://maas-coding-api.cn-huabei-1.xf-yun.com/v2"
+  temperature: 0.0
+  max_tokens: 4096
 embedding:
-  provider: openai
-  model: text-embedding-3-small
-  dimensions: 1536
+  provider: "ollama"
+  model: "nomic-embed-text"
+  base_url: "http://localhost:11434"
+  dimensions: 768
 splitter:
   provider: recursive
   chunk_size: 800
@@ -17,7 +21,7 @@ retrieval:
   top_k: 5
   use_hybrid: true
 rerank:
-  enabled: false
+  enabled: true
   provider: none
   model: ""
 evaluation:

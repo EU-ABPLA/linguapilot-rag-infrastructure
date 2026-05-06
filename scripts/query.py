@@ -18,11 +18,12 @@ from core.query_engine.hybrid_search import HybridSearch
 from core.query_engine.query_processor import QueryProcessor
 from core.query_engine.reranker import Reranker
 from core.query_engine.sparse_retriever import SparseRetriever
+from core.secrets import safe_error_message
 from core.settings import SettingsError, load_settings
 from core.trace.trace_context import TraceContext
 from core.types import RetrievalResult
 from ingestion.storage.bm25_indexer import BM25Indexer
-from observability.logger import get_logger
+from observability.logger import get_logger, write_trace
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -46,7 +47,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         settings = load_settings(args.config)
     except SettingsError as exc:
-        logger.error(str(exc))
+        logger.error(safe_error_message(exc))
         return 1
     query_processor = QueryProcessor()
     dense_retriever = DenseRetriever(settings=settings)
@@ -63,7 +64,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     filters: Dict[str, Any] = {}
     if isinstance(args.collection, str) and args.collection.strip():
         filters["collection"] = args.collection.strip()
-    trace = TraceContext(trace_type="query")
+    trace = TraceContext(
+        trace_type="query",
+        metadata={
+            "query": str(args.query),
+            "top_k": int(args.top_k),
+            "collection": str(filters.get("collection", "")),
+            "verbose": bool(args.verbose),
+            "no_rerank": bool(args.no_rerank),
+        },
+    )
+    output: List[RetrievalResult] = []
+    error_message = ""
     try:
         if args.verbose:
             output = _run_verbose(
@@ -91,7 +103,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 trace=trace,
             )
     except Exception as exc:
-        logger.error(str(exc))
+        error_message = safe_error_message(exc)
+        logger.error(error_message)
+    trace.finish(error=error_message or None)
+    if settings.observability.enabled:
+        write_trace(trace.to_dict(), log_file=settings.observability.log_file)
+    if error_message:
         return 1
     if not output:
         print("未找到相关文档，请先运行 ingest.py 摄取数据")
@@ -140,7 +157,7 @@ def _run_verbose(
             trace=trace,
         )
     except Exception as exc:
-        logger.warning("dense route fallback: %s", str(exc))
+        logger.warning("dense route fallback: %s", safe_error_message(exc))
         dense_output = []
     try:
         sparse_output = sparse_retriever.retrieve(
@@ -149,7 +166,7 @@ def _run_verbose(
             trace=trace,
         )
     except Exception as exc:
-        logger.warning("sparse route fallback: %s", str(exc))
+        logger.warning("sparse route fallback: %s", safe_error_message(exc))
         sparse_output = []
     fused_output = fusion.fuse(dense_output, sparse_output, top_k=top_k, trace=trace)
     hybrid_output = hybrid_search._apply_metadata_filters(fused_output, processed.filters)[:top_k]

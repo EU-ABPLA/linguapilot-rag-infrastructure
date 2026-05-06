@@ -58,3 +58,31 @@ Construct a complete, micro-RAG pipeline tailored for language tutoring.
 2. Define a robust System Prompt, explicitly instructing the LLM to adopt the persona of a "highly patient and pedagogical foreign language tutor."
 3. Implement the interaction loop: When a user submits a grammar-related query, the script must first execute a retrieval step against ChromaDB to extract the most relevant textbook context.
 4. Pass both the user query and the retrieved context to the LLM. Ensure the final generated response relies explicitly on the retrieved data to formulate a guided, educational answer.
+
+---
+
+## Feature Overview
+
+**1. MCP Q&A**  
+Use the `query_knowledge_hub` tool in one sentence to query the knowledge base and get a concise answer.  
+![MCP Q&A](docs/images/features/mcp-chat.png)
+
+**2. System Overview**  
+View LLM, embedding, vector store, and rerank settings in one place, along with collection statistics.  
+![System Overview](docs/images/features/overview.png)
+
+**3. Data Browser**  
+Browse documents by collection, including chunk and processing status, to quickly verify data quality.  
+![Data Browser](docs/images/features/data-browser.png)
+
+**4. Ingestion Manager**  
+Upload PDFs and run ingestion with collection-based management and document deletion support.  
+![Ingestion Manager](docs/images/features/ingestion-manager.png)
+
+**5. Ingestion Traces**  
+Inspect stage timings and execution details for ingestion jobs to identify bottlenecks.  
+![Ingestion Traces](docs/images/features/ingestion-traces.png)
+
+**6. Query Traces**  
+Track the full query pipeline, including retrieval and fusion stages, for debugging and tuning.  
+![Query Traces](docs/images/features/query-traces.png)

@@ -1,4 +1,5 @@
 import hashlib
+from io import BytesIO
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -57,11 +58,37 @@ class PdfLoader(BaseLoader):
 
 
 def _extract_text(raw: bytes) -> str:
+    extracted = _extract_text_with_pypdf(raw)
+    if extracted:
+        return extracted
     decoded = raw.decode("latin1", errors="ignore")
     cleaned = re.sub(r"\s+", " ", decoded).strip()
     if cleaned:
         return cleaned
     return "PDF content"
+
+
+def _extract_text_with_pypdf(raw: bytes) -> str:
+    try:
+        from pypdf import PdfReader
+    except Exception:
+        return ""
+    try:
+        reader = PdfReader(BytesIO(raw))
+    except Exception:
+        return ""
+    pages: List[str] = []
+    for page in reader.pages:
+        try:
+            text = page.extract_text() or ""
+        except Exception:
+            text = ""
+        normalized = re.sub(r"\s+", " ", text).strip()
+        if normalized:
+            pages.append(normalized)
+    if not pages:
+        return ""
+    return "\n".join(pages)
 
 
 def _inject_image_placeholders(

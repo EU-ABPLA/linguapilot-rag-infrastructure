@@ -1,1 +1,11 @@
+PyYAML>=6.0
+streamlit>=1.33.0,<2.0.0
+altair>=5.0.0,<6.0.0
+pypdf>=4.2.0
 
+# Optional evaluation backends
+ragas>=0.2.0
+datasets>=2.18.0
+
+# Dev / test
+pytest>=8.0.0

@@ -15,6 +15,7 @@ if str(_SRC) not in sys.path:
 
 from core.query_engine.hybrid_search import HybridSearch
 from core.query_engine.reranker import Reranker
+from core.secrets import safe_error_message
 from core.settings import SettingsError, load_settings
 from libs.evaluator.evaluator_factory import EvaluatorFactory
 from observability.evaluation.eval_runner import EvalRunner
@@ -43,7 +44,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         settings = load_settings(args.config)
     except SettingsError as exc:
-        logger.error(str(exc))
+        logger.error(safe_error_message(exc))
         return 1
     test_set_path = str(args.test_set).strip() or settings.evaluation.golden_test_set
     try:
@@ -58,7 +59,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
         report = runner.run(test_set_path)
     except Exception as exc:
-        logger.error(str(exc))
+        logger.error(safe_error_message(exc))
         return 1
     payload = report.to_dict()
     print(json.dumps(payload, ensure_ascii=False, indent=2))

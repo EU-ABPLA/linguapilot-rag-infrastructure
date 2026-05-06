@@ -4,9 +4,11 @@ import argparse
 from pathlib import Path
 from typing import List, Optional, Sequence
 
+from core.secrets import safe_error_message
 from core.settings import SettingsError, load_settings
+from core.trace.trace_context import TraceContext
 from ingestion.pipeline import IngestionPipeline
-from observability.logger import get_logger
+from observability.logger import get_logger, write_trace
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -33,7 +35,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         settings = load_settings(args.config)
     except SettingsError as exc:
-        logger.error(str(exc))
+        logger.error(safe_error_message(exc))
         return 1
     pipeline = IngestionPipeline(settings)
     total_chunks = 0
@@ -41,22 +43,38 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     total_images = 0
     status_counts = {"success": 0, "skipped": 0, "failed": 0}
     for file_path in source_files:
+        trace = TraceContext(
+            trace_type="ingestion",
+            metadata={
+                "source_path": str(file_path),
+                "collection": str(args.collection),
+                "force": bool(args.force),
+            },
+        )
         try:
             result = pipeline.run(
                 str(file_path),
                 collection=str(args.collection),
                 force=bool(args.force),
+                trace=trace,
             )
         except Exception as exc:
+            error_message = safe_error_message(exc)
             status_counts["failed"] += 1
-            logger.error(str(exc))
+            logger.error(error_message)
+            trace.finish(error=error_message)
+            if settings.observability.enabled:
+                write_trace(trace.to_dict(), log_file=settings.observability.log_file)
             print(
                 "file="
                 + str(file_path)
                 + " status=failed chunks=0 vectors=0 images=0 error="
-                + str(exc)
+                + error_message
             )
             continue
+        trace.finish(error=None)
+        if settings.observability.enabled:
+            write_trace(trace.to_dict(), log_file=settings.observability.log_file)
         if result.status == "success":
             status_counts["success"] += 1
         elif result.status == "skipped":

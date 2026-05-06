@@ -3,10 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List
 
+from core.secrets import safe_error_message
 from core.settings import SettingsError, load_settings
+from core.trace.trace_context import TraceContext
 from ingestion.document_manager import DocumentManager
 from ingestion.pipeline import IngestionPipeline
 from libs.vector_store.chroma_store import ChromaStore
+from observability.logger import write_trace
 
 
 def render_page() -> None:
@@ -30,7 +33,7 @@ def render_page() -> None:
         try:
             settings = load_settings("config/settings.yaml")
         except SettingsError as exc:
-            st.error(str(exc))
+            st.error(safe_error_message(exc))
             return
         pipeline = IngestionPipeline(settings)
         total_files = len(uploaded_files or [])
@@ -62,13 +65,26 @@ def render_page() -> None:
                     + str(total)
                 )
 
+            trace: TraceContext | None = None
             try:
+                trace = TraceContext(
+                    trace_type="ingestion",
+                    metadata={
+                        "source_path": str(target_path),
+                        "collection": normalized_collection,
+                        "force": bool(force),
+                    },
+                )
                 result = pipeline.run(
                     str(target_path),
                     collection=normalized_collection,
                     force=force,
                     on_progress=_on_progress,
+                    trace=trace,
                 )
+                trace.finish(error=None)
+                if settings.observability.enabled:
+                    write_trace(trace.to_dict(), log_file=settings.observability.log_file)
                 result_rows.append(
                     {
                         "file": file_name,
@@ -79,11 +95,16 @@ def render_page() -> None:
                     }
                 )
             except Exception as exc:
+                error_message = safe_error_message(exc)
+                if trace is not None:
+                    trace.finish(error=error_message)
+                if settings.observability.enabled and trace is not None:
+                    write_trace(trace.to_dict(), log_file=settings.observability.log_file)
                 result_rows.append(
                     {
                         "file": file_name,
                         "status": "failed",
-                        "error": str(exc),
+                        "error": error_message,
                     }
                 )
             completed += 1
@@ -118,7 +139,7 @@ def render_page() -> None:
                     else:
                         st.warning("No records deleted for: " + item.source_path)
                 except Exception as exc:
-                    st.error(str(exc))
+                    st.error(safe_error_message(exc))
 
 
 def _normalize_collection(value: str) -> str:

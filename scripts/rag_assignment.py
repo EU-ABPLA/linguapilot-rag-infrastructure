@@ -5,7 +5,7 @@ import importlib.util
 import os
 import sys
 from math import sqrt
-from typing import List, Sequence
+from typing import Any, List, Optional, Sequence
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "src")
@@ -21,6 +21,39 @@ STORY_SEGMENTS: List[str] = [
 ]
 
 DEFAULT_QUERY = "How did Anna cross the river?"
+
+
+class SentenceTransformersEmbedding:
+    """Fallback embedding provider using SentenceTransformers."""
+
+    def __init__(self, model: str = "all-MiniLM-L6-v2"):
+        """Initialize SentenceTransformers embedding model."""
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            raise ImportError(
+                "sentence-transformers is required for offline embeddings. "
+                "Install it with: pip install sentence-transformers"
+            )
+        self.model = SentenceTransformer(model)
+
+    def embed(self, texts: Sequence[str], trace: Optional[Any] = None) -> List[List[float]]:
+        """Embed texts using SentenceTransformers."""
+        if isinstance(texts, (str, bytes)) or not isinstance(texts, Sequence):
+            raise ValueError("texts must be a sequence of strings")
+        
+        normalized: List[str] = []
+        for item in texts:
+            if not isinstance(item, str) or not item.strip():
+                raise ValueError("text item must be non-empty string")
+            normalized.append(item)
+        
+        if not normalized:
+            raise ValueError("texts must not be empty")
+        
+        # SentenceTransformers returns numpy arrays, convert to lists
+        embeddings = self.model.encode(normalized, convert_to_tensor=False)
+        return [embedding.tolist() for embedding in embeddings]
 
 
 def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
@@ -57,8 +90,22 @@ def load_openai_embedding_class() -> type:
 
 
 def build_embedding_client(api_key: str, model: str):
-    OpenAIEmbedding = load_openai_embedding_class()
-    return OpenAIEmbedding(model=model, api_key=api_key)
+    """Build embedding client using OpenAI API or SentenceTransformers fallback."""
+    if api_key and api_key.strip():
+        # Use OpenAI API
+        OpenAIEmbedding = load_openai_embedding_class()
+        return OpenAIEmbedding(model=model, api_key=api_key)
+    else:
+        # Use SentenceTransformers as fallback
+        print("Using SentenceTransformers for offline embeddings...")
+        # Map common OpenAI model names to SentenceTransformers models
+        model_mapping = {
+            "text-embedding-3-small": "all-MiniLM-L6-v2",
+            "text-embedding-3-large": "all-mpnet-base-v2",
+            "text-embedding-ada-002": "all-MiniLM-L6-v2",
+        }
+        st_model = model_mapping.get(model, "all-MiniLM-L6-v2")
+        return SentenceTransformersEmbedding(model=st_model)
 
 
 def main(argv=None) -> int:
@@ -81,7 +128,7 @@ def main(argv=None) -> int:
 
     if not args.api_key:
         print(
-            "No OpenAI API key was detected. Running with offline fallback embeddings instead."
+            "No OpenAI API key detected. Using SentenceTransformers for offline embeddings."
         )
 
     embedding_client = build_embedding_client(api_key=args.api_key, model=args.model)
@@ -91,8 +138,9 @@ def main(argv=None) -> int:
     except RuntimeError as exc:
         print(f"Embedding failed: {exc}")
         print(
-            "If you do not have a valid OpenAI API key, set the OPENAI_API_KEY environment variable "
-            "or pass --api-key <YOUR_KEY> to use the OpenAI embedding service."
+            "Failed to generate embeddings. Ensure that either:\n"
+            "  1. You have a valid OpenAI API key and internet connection, or\n"
+            "  2. You have sentence-transformers installed: pip install sentence-transformers"
         )
         return 1
 

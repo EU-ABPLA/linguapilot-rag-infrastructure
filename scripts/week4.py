@@ -1,29 +1,9 @@
 from __future__ import annotations
 
 """
-Week 4: Micro-RAG language tutor prototype
-
-This single-file script implements a minimal micro-RAG pipeline suitable for
-local testing without external dependencies, while optionally integrating
-with a local ChromaDB instance if the `chromadb` package is available.
-
-Features:
-- Ingest plain text files (or a single text) into an in-memory collection
-  or into ChromaDB when available.
-- Simple retrieval (bag-of-words scoring) when chromadb is not available.
-- LLM interface: optional OpenAI usage when `openai` and `OPENAI_API_KEY`
-  are present; otherwise a safe deterministic mock LLM that uses retrieved
-  context to produce answers that explicitly cite sources.
-- A robust system prompt that instructs the model to behave as a patient
-  pedagogical foreign-language tutor.
-
-Usage examples:
   python scripts/week4.py --ingest-file path/to/text.txt
   python scripts/week4.py --query "Explain the past simple of 'go'"
   python scripts/week4.py --serve  # run a simple loop for interactive queries
-
-The script is intentionally self-contained so you can run and test it
-without modifying the rest of the project.
 """
 
 from pathlib import Path
@@ -146,11 +126,6 @@ SYSTEM_PROMPT = (
 
 
 def call_llm(system: str, user_prompt: str, retrieved: List[Dict[str, Any]]) -> str:
-    """
-    Call the LLM. If OpenAI is available and an API key is set, use it; otherwise
-    return a deterministic, citation-aware mock response that references the
-    retrieved snippets.
-    """
     if OPENAI_AVAILABLE and os.environ.get("OPENAI_API_KEY"):
         openai.api_key = os.environ.get("OPENAI_API_KEY")
         messages = [
@@ -190,7 +165,6 @@ def call_llm(system: str, user_prompt: str, retrieved: List[Dict[str, Any]]) -> 
             best_sentence = sent
             break
     
-    # Fallback: find any sentence with "→"
     if best_sentence == (sentences[0] if sentences else ""):
         for sent in sentences:
             if "→" in sent:

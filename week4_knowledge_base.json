@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "id": "sample_grammar.txt::para::1",
+      "text": "English Verb Tenses: A Beginner's Guide"
+    },
+    {
+      "id": "sample_grammar.txt::para::2",
+      "text": "The Past Simple\nThe past simple is used to describe actions that happened and were completed in the past. Regular verbs add -ed to form the past simple: walk → walked, play → played. Irregular verbs have unique past forms: go → went, see → saw, eat → ate. Negative: I did not go. Question: Did you see it?"
+    },
+    {
+      "id": "sample_grammar.txt::para::3",
+      "text": "The Present Simple\nThe present simple describes habitual actions, general truths, or permanent states. Use the base verb for I/you/we/they and add -s/-es for he/she/it. Examples: I work, she works, they study. Negative: I do not work. Question: Do you work here?"
+    },
+    {
+      "id": "sample_grammar.txt::para::4",
+      "text": "The Future Simple\nThe future simple is formed using \"will\" plus the base verb. It expresses predictions or future actions without planning. Example: I will go tomorrow, she will call you. Negative: I will not go. Question: Will you come?"
+    },
+    {
+      "id": "sample_grammar.txt::para::5",
+      "text": "Continuous Tenses\nThe continuous (progressive) form uses \"be\" plus the -ing form of the verb. Present continuous: I am working. Past continuous: I was working. Future continuous: I will be working. These describe actions in progress at a specific moment."
+    },
+    {
+      "id": "sample_grammar.txt::para::6",
+      "text": "Modal Verbs\nModal verbs like can, could, may, might, must, should, would express ability, permission, obligation, or possibility. Example: You should study harder. I can speak English. These do not change form for different subjects."
+    }
+  ]
+}

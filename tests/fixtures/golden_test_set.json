@@ -1,0 +1,40 @@
+{
+  "test_cases": [
+    {
+      "query": "How to setup Azure OpenAI endpoint?",
+      "expected_chunk_ids": [
+        "chunk-azure-guide"
+      ],
+      "expected_sources": [
+        "docs/azure_guide.md"
+      ],
+      "top_k": 5,
+      "filters": {
+        "collection": "cloud"
+      }
+    },
+    {
+      "query": "OpenAI setup guide with API examples",
+      "expected_chunk_ids": [
+        "chunk-openai-guide"
+      ],
+      "expected_sources": [
+        "docs/openai_guide.md"
+      ],
+      "top_k": 5
+    },
+    {
+      "query": "Azure troubleshooting FAQ",
+      "expected_chunk_ids": [
+        "chunk-azure-faq"
+      ],
+      "expected_sources": [
+        "docs/azure_faq.md"
+      ],
+      "top_k": 5,
+      "filters": {
+        "collection": "cloud"
+      }
+    }
+  ]
+}

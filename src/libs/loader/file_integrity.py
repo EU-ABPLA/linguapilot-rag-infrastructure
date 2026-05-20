@@ -28,6 +28,14 @@ class FileIntegrityChecker(ABC):
     def mark_failed(self, file_hash: str, error_msg: str) -> None:
         raise NotImplementedError
 
+    @abstractmethod
+    def remove_record(
+        self,
+        file_hash: Optional[str] = None,
+        file_path: Optional[str] = None,
+    ) -> int:
+        raise NotImplementedError
+
 
 class SQLiteIntegrityChecker(FileIntegrityChecker):
     def __init__(self, db_path: str = "data/db/ingestion_history.db"):
@@ -106,6 +114,30 @@ class SQLiteIntegrityChecker(FileIntegrityChecker):
                 """,
                 (normalized_hash, message),
             )
+
+    def remove_record(
+        self,
+        file_hash: Optional[str] = None,
+        file_path: Optional[str] = None,
+    ) -> int:
+        if file_hash is None and file_path is None:
+            raise ValueError("file_hash or file_path must be provided")
+        clauses: List[str] = []
+        params: List[Any] = []
+        if file_hash is not None:
+            clauses.append("file_hash = ?")
+            params.append(_normalize_hash(file_hash))
+        if file_path is not None:
+            normalized_path = str(file_path).strip()
+            if not normalized_path:
+                raise ValueError("file_path must be non-empty")
+            clauses.append("file_path = ?")
+            params.append(normalized_path)
+        sql = "DELETE FROM ingestion_history WHERE " + " AND ".join(clauses)
+        with self._connect() as conn:
+            cursor = conn.execute(sql, tuple(params))
+            deleted = int(cursor.rowcount if cursor.rowcount is not None else 0)
+        return deleted
 
     def list_processed(self) -> List[Dict[str, Any]]:
         with self._connect() as conn:

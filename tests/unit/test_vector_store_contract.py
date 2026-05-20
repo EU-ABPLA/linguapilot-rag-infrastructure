@@ -1,9 +1,11 @@
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import pytest
 
 from libs.vector_store.base_vector_store import BaseVectorStore
+from libs.vector_store.chroma_store import ChromaStore
 from libs.vector_store.vector_store_factory import VectorStoreFactory
 
 
@@ -169,3 +171,62 @@ def test_vector_store_contract_get_by_ids_shape() -> None:
         assert set(["id", "content", "metadata"]).issubset(rows[0].keys())
     finally:
         VectorStoreFactory.unregister(provider)
+
+
+def test_chroma_delete_by_metadata_rejects_empty_filters(tmp_path: Path) -> None:
+    store = ChromaStore(
+        persist_directory=str(tmp_path / "db"),
+        collection="delete-boundary",
+    )
+    with pytest.raises(ValueError) as exc_info:
+        store.delete_by_metadata({})
+    assert "filters must be a non-empty mapping" in str(exc_info.value)
+
+
+def test_chroma_delete_by_metadata_returns_zero_when_no_match(tmp_path: Path) -> None:
+    store = ChromaStore(
+        persist_directory=str(tmp_path / "db"),
+        collection="delete-no-match",
+    )
+    store.upsert(
+        [
+            {
+                "id": "chunk-1",
+                "vector": [0.1, 0.2],
+                "content": "hello",
+                "metadata": {"collection": "default", "source_path": "docs/a.md"},
+            }
+        ]
+    )
+    deleted = store.delete_by_metadata({"collection": "missing"})
+    assert deleted == 0
+    rows = store.get_by_metadata()
+    assert len(rows) == 1
+    assert rows[0]["id"] == "chunk-1"
+
+
+def test_chroma_delete_by_metadata_removes_matching_records(tmp_path: Path) -> None:
+    store = ChromaStore(
+        persist_directory=str(tmp_path / "db"),
+        collection="delete-hit",
+    )
+    store.upsert(
+        [
+            {
+                "id": "chunk-1",
+                "vector": [0.1, 0.2],
+                "content": "hello",
+                "metadata": {"collection": "default", "source_path": "docs/a.md"},
+            },
+            {
+                "id": "chunk-2",
+                "vector": [0.2, 0.1],
+                "content": "world",
+                "metadata": {"collection": "test", "source_path": "docs/b.md"},
+            },
+        ]
+    )
+    deleted = store.delete_by_metadata({"collection": "default"})
+    assert deleted == 1
+    rows = store.get_by_metadata()
+    assert [item["id"] for item in rows] == ["chunk-2"]

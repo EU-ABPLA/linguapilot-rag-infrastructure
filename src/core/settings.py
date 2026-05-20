@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
+import re
 from typing import Any, Dict, List, Optional, Sequence
 
 import yaml
@@ -9,6 +11,9 @@ import yaml
 
 class SettingsError(ValueError):
     pass
+
+
+_ENV_VAR_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
 @dataclass
@@ -102,6 +107,7 @@ class Settings:
 
 
 def load_settings(path: str) -> Settings:
+    _load_dotenv_from_config_path(path)
     raw = _load_yaml(path)
     settings = Settings(
         llm=LLMSettings(
@@ -205,6 +211,41 @@ def _load_yaml(path: str) -> Dict[str, Any]:
     return data
 
 
+def _load_dotenv_from_config_path(config_path: str) -> None:
+    config_file = Path(config_path).resolve()
+    for folder in [config_file.parent, *config_file.parents]:
+        dotenv_path = folder / ".env"
+        if dotenv_path.exists() and dotenv_path.is_file():
+            _merge_dotenv_into_environ(dotenv_path)
+            return
+
+
+def _merge_dotenv_into_environ(dotenv_path: Path) -> None:
+    with dotenv_path.open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[len("export ") :].strip()
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            normalized_key = key.strip()
+            if not normalized_key:
+                continue
+            normalized_value = value.strip()
+            if (
+                len(normalized_value) >= 2
+                and normalized_value[0] == normalized_value[-1]
+                and normalized_value[0] in ("'", '"')
+            ):
+                normalized_value = normalized_value[1:-1]
+            existing_value = os.environ.get(normalized_key)
+            if existing_value is None or str(existing_value).strip() == "":
+                os.environ[normalized_key] = normalized_value
+
+
 def _get(raw: Dict[str, Any], field: str) -> Any:
     current: Any = raw
     for part in field.split("."):
@@ -227,7 +268,7 @@ def _require_str(raw: Dict[str, Any], field: str) -> str:
     value = _get(raw, field)
     if not isinstance(value, str) or not value.strip():
         raise SettingsError(f"Invalid value for field: {field}")
-    return value
+    return _resolve_env_placeholders(value, field)
 
 
 def _optional_str(raw: Dict[str, Any], field: str, default: str) -> str:
@@ -236,7 +277,21 @@ def _optional_str(raw: Dict[str, Any], field: str, default: str) -> str:
         return default
     if not isinstance(value, str):
         raise SettingsError(f"Invalid value for field: {field}")
-    return value
+    return _resolve_env_placeholders(value, field)
+
+
+def _resolve_env_placeholders(value: str, field: str) -> str:
+    if "${" not in value:
+        return value
+    missing = [name for name in _ENV_VAR_PATTERN.findall(value) if name not in os.environ]
+    if missing:
+        raise SettingsError(
+            "Missing environment variable(s) for field "
+            + field
+            + ": "
+            + ", ".join(sorted(set(missing)))
+        )
+    return _ENV_VAR_PATTERN.sub(lambda match: os.environ[match.group(1)], value)
 
 
 def _require_int(raw: Dict[str, Any], field: str) -> int:

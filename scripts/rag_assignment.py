@@ -1,3 +1,10 @@
+"""
+Week 2: Semantic Similarity Ranking for Story Segments
+
+Demonstrates embedding generation and cosine similarity ranking
+using either OpenAI embeddings (online) or SentenceTransformers (offline).
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -7,10 +14,10 @@ import sys
 from math import sqrt
 from typing import Any, List, Optional, Sequence
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC = os.path.join(ROOT, "src")
-if SRC not in sys.path:
-    sys.path.insert(0, SRC)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_PATH = os.path.join(PROJECT_ROOT, "src")
+if SRC_PATH not in sys.path:
+    sys.path.insert(0, SRC_PATH)
 
 STORY_SEGMENTS: List[str] = [
     "Anna found an old map hidden between the pages of a dusty book.",
@@ -22,141 +29,175 @@ STORY_SEGMENTS: List[str] = [
 
 DEFAULT_QUERY = "How did Anna cross the river?"
 
+OPENAI_MODEL_TO_SENTENCE_TRANSFORMERS = {
+    "text-embedding-3-small": "all-MiniLM-L6-v2",
+    "text-embedding-3-large": "all-mpnet-base-v2",
+    "text-embedding-ada-002": "all-MiniLM-L6-v2",
+}
 
-class SentenceTransformersEmbedding:
-    """Fallback embedding provider using SentenceTransformers."""
 
-    def __init__(self, model: str = "all-MiniLM-L6-v2"):
-        """Initialize SentenceTransformers embedding model."""
+
+class OfflineEmbedder:
+    """Generate embeddings using SentenceTransformers for offline inference."""
+
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         try:
             from sentence_transformers import SentenceTransformer
-        except ImportError:
+        except ImportError as error:
             raise ImportError(
-                "sentence-transformers is required for offline embeddings. "
-                "Install it with: pip install sentence-transformers"
-            )
-        self.model = SentenceTransformer(model)
+                "sentence-transformers required. Install with: pip install sentence-transformers"
+            ) from error
+        
+        self.model = SentenceTransformer(model_name)
 
     def embed(self, texts: Sequence[str], trace: Optional[Any] = None) -> List[List[float]]:
-        """Embed texts using SentenceTransformers."""
-        if isinstance(texts, (str, bytes)) or not isinstance(texts, Sequence):
+        """Convert texts to embedding vectors."""
+        if not isinstance(texts, Sequence) or isinstance(texts, (str, bytes)):
             raise ValueError("texts must be a sequence of strings")
         
-        normalized: List[str] = []
-        for item in texts:
-            if not isinstance(item, str) or not item.strip():
-                raise ValueError("text item must be non-empty string")
-            normalized.append(item)
+        validated_texts = []
+        for text in texts:
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError("each text must be a non-empty string")
+            validated_texts.append(text)
         
-        if not normalized:
-            raise ValueError("texts must not be empty")
+        if not validated_texts:
+            raise ValueError("at least one text required")
         
-        # SentenceTransformers returns numpy arrays, convert to lists
-        embeddings = self.model.encode(normalized, convert_to_tensor=False)
+        embeddings = self.model.encode(validated_texts, convert_to_tensor=False)
         return [embedding.tolist() for embedding in embeddings]
 
 
-def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
-    if len(a) != len(b):
-        raise ValueError("Vectors must have the same dimension")
-    dot = 0.0
-    norm_a = 0.0
-    norm_b = 0.0
-    for x, y in zip(a, b):
-        dot += x * y
-        norm_a += x * x
-        norm_b += y * y
-    if norm_a <= 0.0 or norm_b <= 0.0:
+def compute_cosine_similarity(vector_a: Sequence[float], vector_b: Sequence[float]) -> float:
+    """
+    Calculate cosine similarity between two vectors.
+    
+    Returns value in [0, 1] where 1 is perfect similarity.
+    """
+    if len(vector_a) != len(vector_b):
+        raise ValueError("vectors must have same dimension")
+    
+    dot_product = sum(x * y for x, y in zip(vector_a, vector_b))
+    magnitude_a = sqrt(sum(x * x for x in vector_a))
+    magnitude_b = sqrt(sum(y * y for y in vector_b))
+    
+    if magnitude_a <= 0.0 or magnitude_b <= 0.0:
         return 0.0
-    return dot / (sqrt(norm_a) * sqrt(norm_b))
+    
+    return dot_product / (magnitude_a * magnitude_b)
 
 
-def rank_segments(query_vector: Sequence[float], segment_vectors: List[Sequence[float]]) -> List[int]:
-    scores = [cosine_similarity(query_vector, vec) for vec in segment_vectors]
-    return sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
+def rank_segments_by_similarity(
+    query_vector: Sequence[float],
+    segment_vectors: List[Sequence[float]]
+) -> List[tuple[int, float]]:
+    """
+    Rank segments by similarity to query vector.
+    
+    Returns list of (segment_index, similarity_score) tuples sorted by score descending.
+    """
+    similarities = [
+        (index, compute_cosine_similarity(query_vector, segment_vector))
+        for index, segment_vector in enumerate(segment_vectors)
+    ]
+    return sorted(similarities, key=lambda x: x[1], reverse=True)
 
 
 def load_openai_embedding_class() -> type:
-    module_path = os.path.join(SRC, "libs", "embedding", "openai_embedding.py")
+    """Dynamically load OpenAIEmbedding class from src/libs/embedding/openai_embedding.py"""
+    module_path = os.path.join(SRC_PATH, "libs", "embedding", "openai_embedding.py")
+    
     if not os.path.exists(module_path):
-        raise FileNotFoundError(f"Embedding module not found: {module_path}")
+        raise FileNotFoundError(f"Module not found: {module_path}")
+    
     spec = importlib.util.spec_from_file_location("openai_embedding_module", module_path)
     if spec is None or spec.loader is None:
-        raise ImportError("Could not load OpenAIEmbedding module")
+        raise ImportError("Could not load openai_embedding module")
+    
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
+    
     return getattr(module, "OpenAIEmbedding")
 
 
-def build_embedding_client(api_key: str, model: str):
-    """Build embedding client using OpenAI API or SentenceTransformers fallback."""
+def create_embedder(api_key: str, model_name: str) -> Any:
+    """
+    Create embedder using OpenAI API if key provided, otherwise use offline embedder.
+    
+    Args:
+        api_key: OpenAI API key (use empty string for offline mode)
+        model_name: Model name (OpenAI or SentenceTransformers)
+        
+    Returns:
+        Embedder instance with embed() method
+    """
     if api_key and api_key.strip():
-        # Use OpenAI API
-        OpenAIEmbedding = load_openai_embedding_class()
-        return OpenAIEmbedding(model=model, api_key=api_key)
-    else:
-        # Use SentenceTransformers as fallback
-        print("Using SentenceTransformers for offline embeddings...")
-        # Map common OpenAI model names to SentenceTransformers models
-        model_mapping = {
-            "text-embedding-3-small": "all-MiniLM-L6-v2",
-            "text-embedding-3-large": "all-mpnet-base-v2",
-            "text-embedding-ada-002": "all-MiniLM-L6-v2",
-        }
-        st_model = model_mapping.get(model, "all-MiniLM-L6-v2")
-        return SentenceTransformersEmbedding(model=st_model)
+        openai_embedding_class = load_openai_embedding_class()
+        return openai_embedding_class(model=model_name, api_key=api_key)
+    
+    print("Using SentenceTransformers for offline embeddings...")
+    offline_model = OPENAI_MODEL_TO_SENTENCE_TRANSFORMERS.get(model_name, "all-MiniLM-L6-v2")
+    return OfflineEmbedder(model_name=offline_model)
 
 
-def main(argv=None) -> int:
+def parse_arguments(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Embed 5 story segments and find the most similar one to a query."
+        description="Rank story segments by similarity to query using embeddings"
     )
-    parser.add_argument("--query", default=DEFAULT_QUERY, help="Question to match.")
+    parser.add_argument(
+        "--query",
+        default=DEFAULT_QUERY,
+        help="Query text to match against segments"
+    )
     parser.add_argument(
         "--model",
         default="text-embedding-3-small",
-        help="OpenAI embedding model or fallback model name.",
+        help="Embedding model name (OpenAI or SentenceTransformers)"
     )
     parser.add_argument(
         "--api-key",
         default=os.getenv("OPENAI_API_KEY", ""),
-        help="OpenAI API key. Leave empty to use offline fallback if available.",
+        help="OpenAI API key (optional; uses offline if empty)"
     )
-    args = parser.parse_args(argv)
-    args.api_key = args.api_key.strip()
+    
+    return parser.parse_args(argv)
 
-    if not args.api_key:
-        print(
-            "No OpenAI API key detected. Using SentenceTransformers for offline embeddings."
-        )
 
-    embedding_client = build_embedding_client(api_key=args.api_key, model=args.model)
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    """Main entry point for segment ranking demo."""
+    args = parse_arguments(argv)
+    api_key = args.api_key.strip()
+    
+    if not api_key:
+        print("No OpenAI API key provided. Using offline embeddings.")
+    
     try:
-        segment_vectors = embedding_client.embed(STORY_SEGMENTS)
-        query_vector = embedding_client.embed([args.query])[0]
-    except RuntimeError as exc:
-        print(f"Embedding failed: {exc}")
+        embedder = create_embedder(api_key=api_key, model_name=args.model)
+        segment_vectors = embedder.embed(STORY_SEGMENTS)
+        query_vector = embedder.embed([args.query])[0]
+    except RuntimeError as error:
+        print(f"Embedding failed: {error}")
         print(
-            "Failed to generate embeddings. Ensure that either:\n"
-            "  1. You have a valid OpenAI API key and internet connection, or\n"
-            "  2. You have sentence-transformers installed: pip install sentence-transformers"
+            "Ensure either:\n"
+            "  1. Valid OpenAI API key and internet connection, or\n"
+            "  2. sentence-transformers installed: pip install sentence-transformers"
         )
         return 1
-
-    ranked_indices = rank_segments(query_vector, segment_vectors)
-    best_index = ranked_indices[0]
-
-    print("Query:")
-    print(args.query)
-    print("")
-    print("Scores de similarité :")
-    for rank, index in enumerate(ranked_indices, start=1):
-        score = cosine_similarity(query_vector, segment_vectors[index])
-        print(f"{rank}. segment {index + 1}: score={score:.4f}")
-    print("")
-    print("Meilleur segment :")
-    print(f"Segment {best_index + 1}: {STORY_SEGMENTS[best_index]}")
+    
+    rankings = rank_segments_by_similarity(query_vector, segment_vectors)
+    
+    print(f"Query: {args.query}\n")
+    print("Similarity scores:")
+    for rank, (segment_index, similarity_score) in enumerate(rankings, start=1):
+        print(f"  {rank}. Segment {segment_index + 1}: {similarity_score:.4f}")
+    
+    best_segment_index, best_score = rankings[0]
+    print(f"\nBest match:")
+    print(f"  Segment {best_segment_index + 1} (score: {best_score:.4f})")
+    print(f"  {STORY_SEGMENTS[best_segment_index]}")
+    
     return 0
 
 

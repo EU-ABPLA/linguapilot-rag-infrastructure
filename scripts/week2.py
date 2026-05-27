@@ -21,15 +21,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC = os.path.join(ROOT, "src")
-if SRC not in sys.path:
-    sys.path.insert(0, SRC)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_PATH = os.path.join(PROJECT_ROOT, "src")
+if SRC_PATH not in sys.path:
+    sys.path.insert(0, SRC_PATH)
 
 
 @dataclass
 class ChunkAnalysis:
-    """Holds analysis data for a single chunk - where it came from and whats wrong with it."""
+    """Analysis results for a single chunk, including position and detected issues."""
     chunk_id: int
     text: str
     start_position: int
@@ -48,7 +48,7 @@ class ChunkAnalysis:
 
 
 def extract_text_from_pdf(pdf_path: str) -> str:
-    """Pull all the text out of a PDF file."""
+    """Extract all text content from a PDF file, joining pages with newlines."""
     try:
         import pdfplumber
     except ImportError:
@@ -68,7 +68,7 @@ def extract_text_from_pdf(pdf_path: str) -> str:
 
 
 def apply_fixed_chunking(text: str, chunk_size: int = 512, overlap: int = 0) -> List[str]:
-    """Split text into fixed-size chunks. Simple but often breaks things in the middle."""
+    """Split text into fixed-size overlapping chunks."""
     chunks = []
     stride = chunk_size - overlap
     
@@ -80,57 +80,80 @@ def apply_fixed_chunking(text: str, chunk_size: int = 512, overlap: int = 0) -> 
     return chunks
 
 
+def _detect_mid_word_break(chunk: str, text: str, end_pos: int) -> Optional[str]:
+    """Check if chunk ends with a partial word."""
+    if chunk and not chunk[-1].isspace() and end_pos < len(text):
+        next_char = text[end_pos]
+        if next_char and next_char not in " \n\t.,;:!?\"-":
+            return "Word got cut in half"
+    return None
+
+
+def _detect_unclosed_quotes(chunk: str) -> List[str]:
+    """Check for mismatched quotes that indicate a split."""
+    issues = []
+    if chunk.count("'") % 2 != 0:
+        issues.append("Odd number of single quotes (probably split)")
+    if chunk.count('"') % 2 != 0:
+        issues.append("Odd number of double quotes (probably split)")
+    return issues
+
+
+def _detect_unclosed_brackets(chunk: str) -> List[str]:
+    """Check for unmatched parentheses and brackets."""
+    issues = []
+    unmatched_parens = chunk.count("(") - chunk.count(")")
+    unmatched_brackets = chunk.count("[") - chunk.count("]")
+    if unmatched_parens > 0:
+        issues.append(f"{unmatched_parens} open parenthesis/es")
+    if unmatched_brackets > 0:
+        issues.append(f"{unmatched_brackets} open bracket/s")
+    return issues
+
+
+def _detect_dialogue_split(chunk: str, text: str, start_pos: int) -> Optional[str]:
+    """Check if dialogue is cut mid-conversation."""
+    starts_dialogue = (chunk.startswith('"') or chunk.startswith("'") or 
+                      chunk.lstrip().startswith("-"))
+    if starts_dialogue and start_pos > 0 and text[start_pos - 1] not in "\n":
+        return "Dialogue probably cut mid-conversation"
+    return None
+
+
+def _detect_table_split(chunk: str) -> Optional[str]:
+    """Check if table structure is broken across chunks."""
+    if "|" in chunk:
+        pipe_count = chunk.count("|")
+        if pipe_count % 2 != 0:
+            return f"Table column split ({pipe_count} pipes)"
+    return None
+
+
 def analyze_chunks_for_issues(
     text: str, chunks: List[str], chunk_size: int
 ) -> List[ChunkAnalysis]:
-    """Look for places where the fixed chunking broke things.
-    
-    We check for:
-    - Words cut in half
-    - Unclosed quotes or parentheses
-    - Dialogue starting mid-line
-    - Table structures split across chunks
-    """
+    """Analyze chunks for structural breaks: words, quotes, brackets, dialogue, tables."""
     analyses = []
     position = 0
     
     for chunk_id, chunk in enumerate(chunks):
-        issues = []
-        
         start_pos = text.find(chunk, position)
         end_pos = start_pos + len(chunk)
         position = end_pos
         
-        # Mid-word break?
-        if chunk and not chunk[-1].isspace() and end_pos < len(text):
-            next_char = text[end_pos] if end_pos < len(text) else ""
-            if next_char and next_char not in " \n\t.,;:!?\"-":
-                issues.append(" Word got cut in half")
+        issues = []
         
-        # Unclosed quotes?
-        if chunk.count("'") % 2 != 0:
-            issues.append("Odd number of single quotes (probably split)")
-        if chunk.count('"') % 2 != 0:
-            issues.append("Odd number of double quotes (probably split)")
+        if issue := _detect_mid_word_break(chunk, text, end_pos):
+            issues.append(issue)
         
-        # Unclosed brackets?
-        open_parens = chunk.count("(") - chunk.count(")")
-        open_brackets = chunk.count("[") - chunk.count("]")
-        if open_parens > 0:
-            issues.append(f"{open_parens} open parenthesis/es")
-        if open_brackets > 0:
-            issues.append(f"{open_brackets} open bracket/s")
+        issues.extend(_detect_unclosed_quotes(chunk))
+        issues.extend(_detect_unclosed_brackets(chunk))
         
-        # Dialogue cut off?
-        if chunk.startswith('"') or chunk.startswith("'") or chunk.lstrip().startswith("-"):
-            if start_pos > 0 and text[start_pos - 1] not in "\n":
-                issues.append("Dialogue probably cut mid-conversation")
+        if issue := _detect_dialogue_split(chunk, text, start_pos):
+            issues.append(issue)
         
-        # Table split?
-        if "|" in chunk:
-            pipe_count = chunk.count("|")
-            if pipe_count % 2 != 0:
-                issues.append(f"Table column split ({pipe_count} pipes)")
+        if issue := _detect_table_split(chunk):
+            issues.append(issue)
         
         analysis = ChunkAnalysis(
             chunk_id=chunk_id,
@@ -145,7 +168,7 @@ def analyze_chunks_for_issues(
 
 
 def initialize_chromadb(collection_name: str = "grammar_rules") -> object:
-    """Set up ChromaDB on your local machine (SQLite backend)."""
+    """Initialize ChromaDB client with local SQLite backend."""
     try:
         import chromadb
     except ImportError:
@@ -154,8 +177,8 @@ def initialize_chromadb(collection_name: str = "grammar_rules") -> object:
     return chromadb.Client()
 
 
-def embed_chunks_with_sentence_transformers(chunks: List[str]) -> List[List[float]]:
-    """Turn each chunk into a vector so we can search by meaning."""
+def generate_embeddings(chunks: List[str]) -> List[List[float]]:
+    """Convert chunks to semantic embeddings using SentenceTransformers."""
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError:
@@ -172,20 +195,20 @@ def store_chunks_in_chromadb(
     embeddings: List[List[float]],
     collection_name: str = "grammar_rules",
 ) -> object:
-    """Save chunks + their vectors to ChromaDB."""
+    """Store chunks and embeddings in ChromaDB with metadata."""
     collection = client.get_or_create_collection(
         name=collection_name,
         metadata={"hnsw:space": "cosine"}
     )
     
-    ids = [f"chunk_{i}" for i in range(len(chunks))]
-    metadatas = [{"chunk_id": i, "size": len(chunk)} for i, chunk in enumerate(chunks)]
+    chunk_ids = [f"chunk_{i}" for i in range(len(chunks))]
+    chunk_metadata = [{"chunk_id": i, "size": len(chunk)} for i, chunk in enumerate(chunks)]
     
     collection.add(
-        ids=ids,
+        ids=chunk_ids,
         embeddings=embeddings,
         documents=chunks,
-        metadatas=metadatas,
+        metadatas=chunk_metadata,
     )
     
     return collection
@@ -196,78 +219,83 @@ def retrieve_grammar_rules(
     query: str,
     num_results: int = 3,
 ) -> List[dict]:
-    """Search ChromaDB for chunks that match your query."""
+    """Search ChromaDB for chunks matching query by semantic similarity."""
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError:
         raise ImportError("Need sentence-transformers: pip install sentence-transformers")
     
     model = SentenceTransformer("all-MiniLM-L6-v2")
-    query_vec = model.encode([query], convert_to_tensor=False)[0].tolist()
+    query_embedding = model.encode([query], convert_to_tensor=False)[0].tolist()
     
     results = collection.query(
-        query_embeddings=[query_vec],
+        query_embeddings=[query_embedding],
         n_results=num_results,
         include=["documents", "distances", "metadatas"]
     )
     
     retrieved = []
-    for doc, distance, metadata in zip(
+    for document_text, distance, metadata in zip(
         results["documents"][0],
         results["distances"][0],
         results["metadatas"][0]
     ):
-        similarity = 1 - distance
+        similarity_score = 1 - distance
         retrieved.append({
-            "document": doc,
-            "similarity_score": similarity,
+            "document": document_text,
+            "similarity_score": similarity_score,
             "metadata": metadata,
         })
     
     return retrieved
 
 
+def _aggregate_issue_types(analyses: List[ChunkAnalysis]) -> dict:
+    """Count frequency of each issue type across all chunks."""
+    issue_frequencies = {}
+    for analysis in analyses:
+        for issue in analysis.issues:
+            issue_type = issue.split(":")[0]
+            issue_frequencies[issue_type] = issue_frequencies.get(issue_type, 0) + 1
+    return issue_frequencies
+
+
 def print_chunk_analysis_report(analyses: List[ChunkAnalysis], top_issues: int = 5) -> None:
-    """Show what went wrong with the chunking."""
+    """Print detailed analysis report showing chunking problems and their frequency."""
     print("\n" + "═" * 80)
     print("CHUNKING ANALYSIS REPORT")
     print("═" * 80)
     
     total = len(analyses)
-    problematic_count = sum(1 for a in analyses if a.issues)
+    problematic = [a for a in analyses if a.issues]
+    problematic_count = len(problematic)
     
     print(f"\nOverview:")
     print(f"   Total chunks: {total:,}")
     print(f"   Chunks with issues: {problematic_count:,} ({problematic_count / total * 100:.1f}%)")
     
-    # Count issue types
-    issue_types = {}
-    for analysis in analyses:
-        for issue in analysis.issues:
-            issue_type = issue.split(":")[0]
-            issue_types[issue_type] = issue_types.get(issue_type, 0) + 1
-    
-    if issue_types:
+    issue_frequencies = _aggregate_issue_types(analyses)
+    if issue_frequencies:
         print("\nWhat went wrong (by frequency):")
-        for issue_type, count in sorted(issue_types.items(), key=lambda x: -x[1]):
+        for issue_type, count in sorted(issue_frequencies.items(), key=lambda x: -x[1]):
             print(f"   {issue_type}: {count}x")
     
-    # Show top problematic chunks
     if problematic_count > 0:
         print(f"\nWorst offenders (top {min(top_issues, problematic_count)} chunks):")
         print("─" * 80)
         
-        worst = sorted(
-            [a for a in analyses if a.issues],
+        worst_chunks = sorted(
+            problematic,
             key=lambda x: len(x.issues),
             reverse=True
         )[:top_issues]
         
-        for analysis in worst:
+        for analysis in worst_chunks:
             print(analysis)
 
 
 def main(argv=None) -> int:
+    """Main workflow: ingest PDF, chunk it, analyze issues, store in ChromaDB, retrieve by query."""
     parser = argparse.ArgumentParser(
         description="Take a grammar textbook PDF, chunk it, and search it"
     )
@@ -307,32 +335,26 @@ def main(argv=None) -> int:
     
     args = parser.parse_args(argv)
     
-    # Extract text from PDF
     print("\nReading PDF...")
     text = extract_text_from_pdf(args.pdf)
     print(f"   Got {len(text):,} characters")
     
-    #Split into fixed chunks
     print(f"\nSplitting into {args.chunk_size}-char chunks...")
     chunks = apply_fixed_chunking(text, chunk_size=args.chunk_size, overlap=args.overlap)
     print(f"   Created {len(chunks):,} chunks")
     
-    #Look for problems
     print("\nAnalyzing where the chunking breaks things...")
     analyses = analyze_chunks_for_issues(text, chunks, args.chunk_size)
     print_chunk_analysis_report(analyses)
     
-    # Set up ChromaDB
     print("\nStarting ChromaDB...")
     client = initialize_chromadb()
     print("   ✓ Ready")
     
-    # Create embeddings
     print("\nConverting chunks to vectors...")
-    embeddings = embed_chunks_with_sentence_transformers(chunks)
+    embeddings = generate_embeddings(chunks)
     print(f"   ✓ {len(embeddings):,} vectors created")
     
-    #Store everything
     print(f"\nStoring in ChromaDB collection '{args.collection_name}'...")
     collection = store_chunks_in_chromadb(
         client,
@@ -342,7 +364,6 @@ def main(argv=None) -> int:
     )
     print(f"   ✓ Stored {len(chunks):,} chunks")
     
-    # search!
     print(f"\nSearching for: '{args.query}'")
     retrieved = retrieve_grammar_rules(
         collection,

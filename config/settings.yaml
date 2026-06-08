@@ -1,8 +1,8 @@
 llm:
-  provider: "openai"
-  model: "astron-code-latest"
+  provider: "deepseek"
+  model: "deepseek-v4-flash"
   api_key: "${LLM_API_KEY}"
-  base_url: "https://maas-coding-api.cn-huabei-1.xf-yun.com/v2"
+  base_url: "https://api.deepseek.com"
   temperature: 0.0
   max_tokens: 4096
 embedding:

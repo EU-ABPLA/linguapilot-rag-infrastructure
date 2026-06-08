@@ -9,6 +9,11 @@ def test_load_settings_success(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LLM_API_KEY", "test-key")
     settings = load_settings("config/settings.yaml")
     assert isinstance(settings.llm.provider, str) and settings.llm.provider
+    assert settings.llm.provider == "deepseek"
+    assert settings.llm.base_url == "https://api.deepseek.com"
+    assert settings.vision_llm.provider == ""
+    assert settings.vision_llm.model == ""
+    assert settings.ingestion.image_captioner.use_vision_llm is False
     assert isinstance(settings.embedding.provider, str) and settings.embedding.provider
     assert settings.vector_store.provider == "chroma"
     assert settings.retrieval.top_k == 5
@@ -199,3 +204,33 @@ observability:
     )
     settings = load_settings(str(config_dir / "settings.yaml"))
     assert settings.llm.api_key == "dotenv-key"
+
+
+def test_load_settings_requires_vision_config_when_captioner_enabled(tmp_path: Path) -> None:
+    config = """
+llm:
+  provider: deepseek
+  model: deepseek-v4-flash
+embedding:
+  provider: openai
+  model: text-embedding-3-small
+vector_store:
+  provider: chroma
+retrieval:
+  top_k: 5
+rerank:
+  enabled: false
+evaluation:
+  backends: [custom]
+observability:
+  enabled: true
+ingestion:
+  image_captioner:
+    use_vision_llm: true
+"""
+    file_path = tmp_path / "settings.yaml"
+    file_path.write_text(config, encoding="utf-8")
+
+    with pytest.raises(SettingsError) as exc_info:
+        load_settings(str(file_path))
+    assert "vision_llm.provider" in str(exc_info.value)

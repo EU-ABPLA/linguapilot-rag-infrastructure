@@ -35,6 +35,23 @@ def test_factory_routes_deepseek_provider() -> None:
     assert isinstance(instance, DeepSeekLLM)
 
 
+def test_factory_passes_deepseek_config_values() -> None:
+    instance = LLMFactory.create(
+        {
+            "llm": {
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "api_key": "k",
+                "base_url": "https://api.deepseek.com",
+            }
+        }
+    )
+    assert isinstance(instance, DeepSeekLLM)
+    assert instance.model == "deepseek-v4-flash"
+    assert instance.api_key == "k"
+    assert instance.base_url == "https://api.deepseek.com"
+
+
 def test_factory_routes_ollama_provider() -> None:
     instance = LLMFactory.create(Settings(llm=LLMConfig(provider="ollama")))
     assert isinstance(instance, OllamaLLM)

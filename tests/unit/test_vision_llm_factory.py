@@ -3,8 +3,9 @@ from dataclasses import dataclass
 import pytest
 
 from libs.llm.azure_vision_llm import AzureVisionLLM
-from libs.llm.base_vision_llm import BaseVisionLLM, UnavailableVisionLLM
+from libs.llm.base_vision_llm import BaseVisionLLM
 from libs.llm.llm_factory import LLMFactory
+from libs.llm.openai_vision_llm import OpenAICompatibleVisionLLM
 
 
 @dataclass
@@ -52,9 +53,25 @@ def test_factory_supports_mapping_settings_for_vision_llm() -> None:
         LLMFactory.unregister_vision(provider)
 
 
-def test_factory_falls_back_to_llm_provider_for_vision() -> None:
+def test_factory_falls_back_to_openai_compatible_llm_provider_for_vision() -> None:
     instance = LLMFactory.create_vision_llm({"llm": {"provider": "openai"}})
-    assert isinstance(instance, UnavailableVisionLLM)
+    assert isinstance(instance, OpenAICompatibleVisionLLM)
+
+
+def test_factory_routes_openai_vision_with_config() -> None:
+    instance = LLMFactory.create_vision_llm(
+        {
+            "vision_llm": {
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "api_key": "k",
+                "base_url": "https://api.openai.com/v1",
+            }
+        }
+    )
+    assert isinstance(instance, OpenAICompatibleVisionLLM)
+    assert instance.provider_name == "openai"
+    assert instance.model == "gpt-4o-mini"
 
 
 def test_factory_raises_for_missing_vision_provider() -> None:

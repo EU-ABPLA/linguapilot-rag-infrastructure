@@ -106,8 +106,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         error_message = safe_error_message(exc)
         logger.error(error_message)
     trace.finish(error=error_message or None)
-    if settings.observability.enabled:
-        write_trace(trace.to_dict(), log_file=settings.observability.log_file)
+    observability = getattr(settings, "observability", None)
+    if observability is not None and getattr(observability, "enabled", False):
+        write_trace(
+            trace.to_dict(),
+            log_file=getattr(observability, "log_file", "logs/traces.jsonl"),
+        )
     if error_message:
         return 1
     if not output:

@@ -42,11 +42,12 @@ def render_page() -> None:
             "total_elapsed_ms": selected.get("total_elapsed_ms"),
         }
     )
-    stage_rows = service.stage_rows(selected)
+    stage_rows = service.stage_duration_rows(selected)
     if not stage_rows:
         st.info("No stage data available for this trace.")
         return
-    st.subheader("Stage Waterfall")
+    st.subheader("Stage Durations")
+    st.caption("Bars show per-stage incremental duration. Repeated stages are numbered by occurrence.")
     _render_stage_chart(stage_rows)
     st.dataframe(stage_rows, use_container_width=True)
 
@@ -57,18 +58,25 @@ def _render_stage_chart(stage_rows):
     try:
         import altair as alt
     except Exception:
-        st.bar_chart(stage_rows, x="stage", y="elapsed_ms")
+        st.bar_chart(stage_rows, x="stage_label", y="duration_ms")
         return
     chart_data = stage_rows
     chart = (
         alt.Chart(alt.Data(values=chart_data))
         .mark_bar()
         .encode(
-            x=alt.X("elapsed_ms:Q", title="Elapsed (ms)"),
-            y=alt.Y("stage:N", sort=[item["stage"] for item in chart_data]),
+            x=alt.X("duration_ms:Q", title="Duration (ms)"),
+            y=alt.Y("stage_label:N", sort=[item["stage_label"] for item in chart_data]),
             color=alt.Color("stage:N", legend=None),
-            tooltip=["stage:N", "elapsed_ms:Q", "method:N", "provider:N"],
+            tooltip=[
+                "stage:N",
+                "occurrence:Q",
+                "duration_ms:Q",
+                "cumulative_elapsed_ms:Q",
+                "method:N",
+                "provider:N",
+            ],
         )
-        .properties(height=300)
+        .properties(height=max(300, len(chart_data) * 28))
     )
     st.altair_chart(chart, use_container_width=True)

@@ -66,6 +66,42 @@ class TraceService:
             )
         return output
 
+    def stage_duration_rows(self, trace: Mapping[str, Any]) -> List[Dict[str, Any]]:
+        raw_rows = self.stage_rows(trace)
+        if not raw_rows:
+            return []
+        counts: Dict[str, int] = {}
+        for item in raw_rows:
+            stage = item["stage"]
+            counts[stage] = counts.get(stage, 0) + 1
+        occurrences: Dict[str, int] = {}
+        output: List[Dict[str, Any]] = []
+        previous_elapsed = 0.0
+        for item in raw_rows:
+            stage = item["stage"]
+            occurrences[stage] = occurrences.get(stage, 0) + 1
+            occurrence = occurrences[stage]
+            elapsed = float(item["elapsed_ms"])
+            duration = elapsed - previous_elapsed
+            previous_elapsed = elapsed
+            if duration < 0:
+                duration = 0.0
+            stage_label = stage
+            if counts[stage] > 1:
+                stage_label = stage + " #" + str(occurrence)
+            output.append(
+                {
+                    "stage_label": stage_label,
+                    "stage": stage,
+                    "occurrence": occurrence,
+                    "duration_ms": duration,
+                    "cumulative_elapsed_ms": elapsed,
+                    "method": item["method"],
+                    "provider": item["provider"],
+                }
+            )
+        return output
+
     def _read_all(self) -> List[Dict[str, Any]]:
         if not self._trace_file.exists() or not self._trace_file.is_file():
             return []

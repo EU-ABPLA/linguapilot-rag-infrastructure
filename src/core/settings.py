@@ -21,6 +21,18 @@ class LLMSettings:
     provider: str
     model: str
     api_key: str = ""
+    base_url: str = ""
+
+
+@dataclass
+class VisionLLMSettings:
+    provider: str = ""
+    model: str = ""
+    api_key: str = ""
+    base_url: str = ""
+    endpoint: str = ""
+    api_version: str = "2024-02-15-preview"
+    max_image_size: int = 2048
 
 
 @dataclass
@@ -96,6 +108,7 @@ class IngestionSettings:
 @dataclass
 class Settings:
     llm: LLMSettings
+    vision_llm: VisionLLMSettings
     embedding: EmbeddingSettings
     splitter: SplitterSettings
     vector_store: VectorStoreSettings
@@ -114,6 +127,18 @@ def load_settings(path: str) -> Settings:
             provider=_require_str(raw, "llm.provider"),
             model=_require_str(raw, "llm.model"),
             api_key=_optional_str(raw, "llm.api_key", ""),
+            base_url=_optional_str(raw, "llm.base_url", ""),
+        ),
+        vision_llm=VisionLLMSettings(
+            provider=_optional_str(raw, "vision_llm.provider", ""),
+            model=_optional_str(raw, "vision_llm.model", ""),
+            api_key=_optional_str(raw, "vision_llm.api_key", ""),
+            base_url=_optional_str(raw, "vision_llm.base_url", ""),
+            endpoint=_optional_str(raw, "vision_llm.endpoint", ""),
+            api_version=_optional_str(
+                raw, "vision_llm.api_version", "2024-02-15-preview"
+            ),
+            max_image_size=_optional_int(raw, "vision_llm.max_image_size", 2048),
         ),
         embedding=EmbeddingSettings(
             provider=_require_str(raw, "embedding.provider"),
@@ -182,6 +207,13 @@ def load_settings(path: str) -> Settings:
 def validate_settings(settings: Settings) -> None:
     if not settings.llm.provider:
         raise SettingsError("Missing required field: llm.provider")
+    if settings.ingestion.image_captioner.use_vision_llm:
+        if not settings.vision_llm.provider:
+            raise SettingsError("Missing required field: vision_llm.provider")
+        if not settings.vision_llm.model:
+            raise SettingsError("Missing required field: vision_llm.model")
+        if settings.vision_llm.max_image_size <= 0:
+            raise SettingsError("Invalid value for field: vision_llm.max_image_size")
     if not settings.embedding.provider:
         raise SettingsError("Missing required field: embedding.provider")
     if not settings.splitter.provider:

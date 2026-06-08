@@ -33,6 +33,9 @@ class PdfLoader(BaseLoader):
         return Document(id=doc_hash, text=text, metadata=metadata)
 
     def _extract_images(self, raw: bytes, doc_hash: str) -> List[Dict[str, Any]]:
+        extracted = self._extract_images_with_pypdf(raw, doc_hash)
+        if extracted:
+            return extracted
         marker = b"/Subtype /Image"
         count = raw.count(marker)
         if count <= 0:
@@ -54,6 +57,43 @@ class PdfLoader(BaseLoader):
                     "position": {"x": 0, "y": 0, "w": 0, "h": 0},
                 }
             )
+        return results
+
+    def _extract_images_with_pypdf(self, raw: bytes, doc_hash: str) -> List[Dict[str, Any]]:
+        try:
+            from pypdf import PdfReader
+        except Exception:
+            return []
+        try:
+            reader = PdfReader(BytesIO(raw))
+        except Exception:
+            return []
+        output_dir = self.image_output_root / doc_hash
+        results: List[Dict[str, Any]] = []
+        for page_index, page in enumerate(reader.pages, start=1):
+            try:
+                page_images = list(getattr(page, "images", []) or [])
+            except Exception:
+                page_images = []
+            for image_index, image in enumerate(page_images, start=1):
+                image_bytes = getattr(image, "data", None)
+                if not isinstance(image_bytes, bytes) or not image_bytes:
+                    continue
+                output_dir.mkdir(parents=True, exist_ok=True)
+                extension = _resolve_image_extension(getattr(image, "name", ""))
+                image_id = f"{doc_hash}_{page_index}_{image_index}"
+                image_path = output_dir / f"{image_id}{extension}"
+                image_path.write_bytes(image_bytes)
+                results.append(
+                    {
+                        "id": image_id,
+                        "path": str(image_path),
+                        "page": page_index,
+                        "text_offset": 0,
+                        "text_length": 0,
+                        "position": {"x": 0, "y": 0, "w": 0, "h": 0},
+                    }
+                )
         return results
 
 
@@ -113,3 +153,11 @@ def _placeholder_png_bytes(seed: int) -> bytes:
     prefix = b"\x89PNG\r\n\x1a\n"
     marker = ("placeholder-" + str(seed)).encode("utf-8")
     return prefix + marker
+
+
+def _resolve_image_extension(name: Any) -> str:
+    if isinstance(name, str):
+        suffix = Path(name).suffix.lower()
+        if suffix in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+            return suffix
+    return ".png"
